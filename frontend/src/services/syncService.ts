@@ -50,7 +50,8 @@ export class SyncPublisher {
       prev.sourceKind !== next.sourceKind ||
       prev.rate !== next.rate ||
       prev.title !== next.title ||
-      prev.duration !== next.duration
+      prev.duration !== next.duration ||
+      prev.transport !== next.transport
     ) {
       return true;
     }

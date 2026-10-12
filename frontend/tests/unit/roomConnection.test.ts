@@ -142,7 +142,7 @@ describe('RoomConnection', () => {
     expect(onAudio).toHaveBeenLastCalledWith({ stream: null, track: null });
   });
 
-  it('forwards only sync-topic data from participants', async () => {
+  it('forwards only sync and PCM topic data from participants', async () => {
     const conn = new RoomConnection('listener');
     const onData = vi.fn();
     conn.events.on('data', onData);
@@ -151,8 +151,18 @@ describe('RoomConnection', () => {
     room.emit('dataReceived', new Uint8Array([1]), { identity: 'host' }, 0, 'other');
     room.emit('dataReceived', new Uint8Array([1]), undefined, 0, 'mc.sync.v1');
     room.emit('dataReceived', new Uint8Array([2]), { identity: 'host' }, 0, 'mc.sync.v1');
-    expect(onData).toHaveBeenCalledTimes(1);
-    expect(onData).toHaveBeenCalledWith({ payload: new Uint8Array([2]), from: 'host' });
+    room.emit('dataReceived', new Uint8Array([3]), { identity: 'host' }, 0, 'mc.pcm.v1');
+    expect(onData).toHaveBeenCalledTimes(2);
+    expect(onData).toHaveBeenCalledWith({
+      payload: new Uint8Array([2]),
+      from: 'host',
+      topic: 'mc.sync.v1',
+    });
+    expect(onData).toHaveBeenCalledWith({
+      payload: new Uint8Array([3]),
+      from: 'host',
+      topic: 'mc.pcm.v1',
+    });
   });
 
   it('replaces the track in place when the policy is unchanged', async () => {

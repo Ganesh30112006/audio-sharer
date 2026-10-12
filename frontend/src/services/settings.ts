@@ -1,4 +1,5 @@
 import { QUALITY_PRESETS, type QualityPreset } from '../audio/sourcePolicy';
+import type { Transport } from '../types/sync';
 import { readJson, writeJson } from '../utils/storage';
 import { createStore } from '../utils/store';
 
@@ -8,6 +9,7 @@ export interface Settings {
   displayName: string;
   /** auto: browser-adaptive jitter buffer (lowest latency). stable: +extra buffer. */
   bufferMode: BufferMode;
+  transport: Transport;
   quality: QualityPreset;
   /** Echo cancellation / noise suppression / AGC for microphone sources. */
   voiceProcessing: boolean;
@@ -22,6 +24,7 @@ export const STABLE_BUFFER_SECONDS = 0.25;
 const defaults: Settings = {
   displayName: '',
   bufferMode: 'auto',
+  transport: 'lossless',
   quality: 'studio',
   voiceProcessing: true,
   lossProtection: true,
@@ -33,6 +36,7 @@ function load(): Settings {
   const s: Settings = { ...defaults };
   if (typeof saved.displayName === 'string') s.displayName = saved.displayName.slice(0, 40);
   if (saved.bufferMode === 'auto' || saved.bufferMode === 'stable') s.bufferMode = saved.bufferMode;
+  if (saved.transport === 'opus' || saved.transport === 'lossless') s.transport = saved.transport;
   if (saved.quality && QUALITY_PRESETS.includes(saved.quality)) s.quality = saved.quality;
   if (typeof saved.voiceProcessing === 'boolean') s.voiceProcessing = saved.voiceProcessing;
   if (typeof saved.lossProtection === 'boolean') s.lossProtection = saved.lossProtection;

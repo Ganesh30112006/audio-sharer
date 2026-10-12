@@ -30,3 +30,12 @@ export function normalizeRoomCode(raw: string): string {
 }
 
 export const ROOM_CODE_RE = /^[A-HJ-NP-Z2-9]{6}$/;
+
+export function formatPcmLabel(s: {
+  sampleRate: number;
+  bitDepth: number;
+  channels?: number;
+}): string {
+  const khz = s.sampleRate % 1000 === 0 ? s.sampleRate / 1000 : (s.sampleRate / 1000).toFixed(1);
+  return `${khz} kHz / ${s.bitDepth}-bit${s.channels === 1 ? ' mono' : ''}`;
+}

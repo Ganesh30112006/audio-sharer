@@ -9,9 +9,10 @@
  */
 export function createPlaybackContext(
   latencyHint: AudioContextLatencyCategory = 'playback',
+  sampleRate = 48_000,
 ): AudioContext {
   try {
-    return new AudioContext({ latencyHint, sampleRate: 48_000 });
+    return new AudioContext({ latencyHint, sampleRate });
   } catch {
     // Some engines reject an explicit sampleRate; fall back to the device rate.
     return new AudioContext({ latencyHint });

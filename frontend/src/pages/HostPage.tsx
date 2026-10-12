@@ -5,6 +5,7 @@ import { getCapabilities } from '../audio/capabilities';
 import { estimateEgressKbps, type QualityPreset } from '../audio/sourcePolicy';
 import { DiagnosticsPanel } from '../components/DiagnosticsPanel';
 import { InviteCard } from '../components/InviteCard';
+import { LosslessStats } from '../components/LosslessStats';
 import { ListenerList } from '../components/ListenerList';
 import { Notice } from '../components/Notice';
 import { PlayerControls } from '../components/PlayerControls';
@@ -63,12 +64,6 @@ function HostDashboard({ session }: { session: HostSession }) {
   };
 
   const listenerCount = conn.participants.filter((p) => p.role === 'listener').length;
-  const policy = session.policy(host.source);
-  const egress = estimateEgressKbps(
-    policy.publish.maxBitrate,
-    Math.max(1, listenerCount),
-    policy.publish.red,
-  );
   const currentIdx = host.queue.findIndex((q) => q.id === currentId);
   const ready = host.phase === 'ready' && conn.state !== 'disconnected';
 
@@ -119,11 +114,19 @@ function HostDashboard({ session }: { session: HostSession }) {
                 </label>
                 <select
                   id="quality"
-                  value={host.quality}
-                  onChange={(e) => void session.setQuality(e.currentTarget.value as QualityPreset)}
+                  value={host.transport === 'lossless' ? 'lossless' : host.quality}
+                  onChange={(e) => {
+                    const v = e.currentTarget.value;
+                    if (v === 'lossless') void session.setTransport('lossless');
+                    else
+                      void session
+                        .setQuality(v as QualityPreset)
+                        .then(() => session.setTransport('opus'));
+                  }}
                   disabled={host.busy}
                 >
-                  <option value="studio">Studio (Opus max, 510 kbps)</option>
+                  <option value="lossless">Lossless (bit-exact, higher latency)</option>
+                  <option value="studio">Studio (Opus max, 510 kbps, lowest latency)</option>
                   <option value="high">High quality (128 kbps)</option>
                   <option value="standard">Standard (64 kbps)</option>
                 </select>
@@ -139,27 +142,28 @@ function HostDashboard({ session }: { session: HostSession }) {
               >
                 <Radio size={18} aria-hidden /> {host.live ? 'Stop broadcasting' : 'Go live'}
               </button>
-              <span
-                className="small muted"
-                title="Opus payload plus packet overhead, from the SFU to all listeners"
-              >
-                ≈ {((policy.publish.maxBitrate * (policy.publish.red ? 2 : 1)) / 1000).toFixed(0)}{' '}
-                kbps up · ≈ {(egress / 1000).toFixed(2)} Mbps SFU egress for{' '}
-                {Math.max(1, listenerCount)} listener{listenerCount === 1 ? '' : 's'}
-              </span>
+              <BroadcastRate session={session} listeners={Math.max(1, listenerCount)} />
             </div>
-            <label className="row small" style={{ flexWrap: 'nowrap' }}>
-              <input
-                type="checkbox"
-                checked={host.lossProtection}
-                disabled={host.busy}
-                onChange={(e) => void session.setLossProtection(e.currentTarget.checked)}
-              />
-              <span>
-                Loss protection (redundant audio) — fewer dropouts on weak networks, about twice the
-                bandwidth.
-              </span>
-            </label>
+            {host.transport === 'lossless' ? (
+              <p className="small muted">
+                Lossless sends the original PCM samples (FLAC-style compression) over the SFU&apos;s
+                reliable data channel: typically 0.7–1.5 Mbps per listener at CD quality, with
+                ~100–150 ms more buffering than Opus.
+              </p>
+            ) : (
+              <label className="row small" style={{ flexWrap: 'nowrap' }}>
+                <input
+                  type="checkbox"
+                  checked={host.lossProtection}
+                  disabled={host.busy}
+                  onChange={(e) => void session.setLossProtection(e.currentTarget.checked)}
+                />
+                <span>
+                  Loss protection (redundant audio) — fewer dropouts on weak networks, about twice
+                  the bandwidth.
+                </span>
+              </label>
+            )}
             {host.source === 'file' && !currentId && (
               <p className="small muted">Add an audio file to start broadcasting.</p>
             )}
@@ -216,6 +220,7 @@ function HostDashboard({ session }: { session: HostSession }) {
           <InviteCard code={session.code} />
           <ListenerList participants={conn.participants} />
           {host.source === 'file' && <MonitorOutput session={session} />}
+          <LosslessStats sender={session.lossless.stats} />
           {showDiag && (
             <DiagnosticsPanel
               conn={session.conn}
@@ -264,5 +269,39 @@ function MonitorOutput({ session }: { session: HostSession }) {
       </div>
       {error && <Notice tone="error">{error}</Notice>}
     </section>
+  );
+}
+
+/** Upstream / SFU egress figures: measured for lossless, estimated for Opus. */
+function BroadcastRate({ session, listeners }: { session: HostSession; listeners: number }) {
+  const host = useStoreState(session.store);
+  const losslessKbps = useStore(session.lossless.stats, (s) => (s.active ? s.kbps : null));
+  let upKbps: number;
+  let label: string;
+  if (host.transport === 'lossless') {
+    upKbps = losslessKbps ?? 0;
+    label = losslessKbps === null ? 'Lossless — measured once live' : 'measured';
+  } else {
+    const policy = session.policy(host.source);
+    upKbps = (policy.publish.maxBitrate * (policy.publish.red ? 2 : 1)) / 1000;
+    label = 'estimated';
+  }
+  const egressMbps =
+    host.transport === 'lossless'
+      ? (upKbps * listeners) / 1000
+      : estimateEgressKbps(
+          session.policy(host.source).publish.maxBitrate,
+          listeners,
+          session.policy(host.source).publish.red,
+        ) / 1000;
+  return (
+    <span
+      className="small muted"
+      title="From the SFU to all listeners (media payload; Opus estimate includes packet overhead)"
+    >
+      ≈ {upKbps.toFixed(0)} kbps up · ≈ {egressMbps.toFixed(2)} Mbps SFU egress for {listeners}{' '}
+      listener
+      {listeners === 1 ? '' : 's'} ({label})
+    </span>
   );
 }

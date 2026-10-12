@@ -13,6 +13,7 @@ const base: PlaybackState = {
   title: 'Song',
   duration: 200,
   at: 1_000_000,
+  transport: 'opus',
 };
 
 const enc = (v: unknown) => new TextEncoder().encode(JSON.stringify(v));
@@ -32,6 +33,7 @@ describe('sync protocol', () => {
     ['fractional rev', enc({ t: 'state', s: { ...base, rev: 1.5 } })],
     ['huge title', enc({ t: 'state', s: { ...base, title: 'x'.repeat(300) } })],
     ['bad kind', enc({ t: 'state', s: { ...base, sourceKind: 'video' } })],
+    ['bad transport', enc({ t: 'state', s: { ...base, transport: 'carrier-pigeon' } })],
     ['empty', new Uint8Array()],
     ['oversized', new Uint8Array(5000)],
   ])('rejects %s', (_label, bytes) => {

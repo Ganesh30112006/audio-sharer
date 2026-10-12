@@ -3,6 +3,7 @@ import { CapabilityList } from '../components/CapabilityList';
 import { useStoreState } from '../hooks/useStore';
 import { settingsStore, updateSettings, type BufferMode } from '../services/settings';
 import type { QualityPreset } from '../audio/sourcePolicy';
+import type { Transport } from '../types/sync';
 
 export default function SettingsPage() {
   const s = useStoreState(settingsStore);
@@ -37,7 +38,20 @@ export default function SettingsPage() {
           )}
         </div>
         <div className="field">
-          <label htmlFor="pref-quality">Default broadcast quality</label>
+          <label htmlFor="pref-transport">Default broadcast mode</label>
+          <select
+            id="pref-transport"
+            value={s.transport}
+            onChange={(e) => updateSettings({ transport: e.currentTarget.value as Transport })}
+          >
+            <option value="lossless">
+              Lossless — bit-exact, up to 24-bit / 192 kHz (about 120 ms buffer, 1–8 Mbps)
+            </option>
+            <option value="opus">Opus — lowest latency (about 45 ms), up to 510 kbps</option>
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="pref-quality">Opus quality</label>
           <select
             id="pref-quality"
             value={s.quality}

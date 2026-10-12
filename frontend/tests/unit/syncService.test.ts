@@ -10,6 +10,7 @@ const input = {
   sourceKind: 'file' as const,
   title: 'A',
   duration: 100,
+  transport: 'opus' as const,
 };
 
 describe('SyncPublisher', () => {

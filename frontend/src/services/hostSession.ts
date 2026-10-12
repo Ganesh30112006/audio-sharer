@@ -1,4 +1,6 @@
+import { createPlaybackContext } from '../audio/audioContext';
 import { LocalFilePlayer } from '../audio/LocalFilePlayer';
+import { LosslessSender } from '../audio/lossless/LosslessSender';
 import { policyFor, type QualityPreset, type SourcePolicy } from '../audio/sourcePolicy';
 import {
   captureDisplayAudio,
@@ -6,8 +8,9 @@ import {
   CaptureError,
   type OwnedCapture,
 } from '../media/capture';
+import { DEFAULT_FORMAT, probeFormat, type SourceFormat } from '../media/audioFormat';
 import { checkAudioFile, FileLibrary, type QueueItem } from '../media/fileSource';
-import type { PlaybackStatus, SourceKind } from '../types/sync';
+import { PCM_TOPIC, type PlaybackStatus, type SourceKind, type Transport } from '../types/sync';
 import { ServerClock } from '../utils/clock';
 import { Disposer } from '../utils/disposer';
 import { createStore, type Store } from '../utils/store';
@@ -26,6 +29,8 @@ export interface HostState {
   live: boolean;
   queue: QueueItem[];
   captureLabel: string | null;
+  /** opus = lowest latency WebRTC track; lossless = bit-exact PCM over the data channel. */
+  transport: Transport;
   quality: QualityPreset;
   lossProtection: boolean;
   /** Restart the queue from the top after the last item. */
@@ -47,7 +52,12 @@ export class HostSession {
   readonly clock = new ServerClock(api.serverTime);
   readonly sync: SyncPublisher;
   readonly store: Store<HostState>;
+  readonly lossless = new LosslessSender((payload) =>
+    this.conn.sendData(payload, undefined, PCM_TOPIC),
+  );
   private capture: OwnedCapture | null = null;
+  /** Web Audio graph feeding a capture track to the lossless sender. */
+  private captureGraph: { ctx: AudioContext; source: MediaStreamAudioSourceNode } | null = null;
   private disposer = new Disposer();
   private disposed = false;
 
@@ -61,6 +71,7 @@ export class HostSession {
       live: false,
       queue: [],
       captureLabel: null,
+      transport: settingsStore.get().transport,
       quality: settingsStore.get().quality,
       lossProtection: settingsStore.get().lossProtection,
       repeat: false,
@@ -100,14 +111,17 @@ export class HostSession {
 
   // ---- files & queue ---------------------------------------------------
 
-  addFiles(files: Iterable<File>): void {
+  async addFiles(files: Iterable<File>): Promise<void> {
     const added: QueueItem[] = [];
     const rejected: string[] = [];
     for (const file of files) {
       const check = checkAudioFile(file);
-      if (check.ok && check.mime) added.push(this.library.add(file, check.mime));
-      else if (check.reason) rejected.push(check.reason);
+      if (check.ok && check.mime) {
+        // Header-only read (64 KB) so lossless mode knows the native rate/bit depth.
+        added.push(this.library.add(file, check.mime, await probeFormat(file)));
+      } else if (check.reason) rejected.push(check.reason);
     }
+    if (this.disposed) return;
     this.store.set((s) => ({ queue: [...s.queue, ...added], notices: rejected }));
     if (added[0] && !this.player.store.get().currentId) this.loadItem(added[0].id, false);
   }
@@ -130,7 +144,14 @@ export class HostSession {
     if (!url) return;
     this.player.load(id, url, item.title);
     if (prev && prev !== id) this.library.release(prev);
-    if (this.store.get().source !== 'file') void this.useFile();
+    const { live, transport, source } = this.store.get();
+    if (source !== 'file') void this.useFile();
+    else if (live && transport === 'lossless') {
+      // Re-targets the tap to this file's native rate before playback starts.
+      void this.publishCurrent().catch((err: unknown) =>
+        this.store.set({ error: (err as Error).message }),
+      );
+    }
     if (autoplay) void this.player.play();
   }
 
@@ -193,8 +214,22 @@ export class HostSession {
   }
 
   private releaseCapture(): void {
+    this.closeCaptureGraph();
     this.capture?.stop();
     this.capture = null;
+  }
+
+  private closeCaptureGraph(): void {
+    if (!this.captureGraph) return;
+    this.lossless.stop();
+    this.captureGraph.source.disconnect();
+    void this.captureGraph.ctx.close().catch(() => undefined);
+    this.captureGraph = null;
+  }
+
+  private currentFormat(): SourceFormat {
+    const id = this.player.store.get().currentId;
+    return this.store.get().queue.find((q) => q.id === id)?.format ?? DEFAULT_FORMAT;
   }
 
   // ---- broadcasting ------------------------------------------------------
@@ -208,6 +243,7 @@ export class HostSession {
         await this.publishCurrent();
       } else {
         this.store.set({ live: false });
+        this.lossless.stop();
         await this.conn.unpublishAudio();
       }
       this.pushSync();
@@ -226,6 +262,12 @@ export class HostSession {
     if (this.store.get().live) await this.publishCurrent();
   }
 
+  async setTransport(transport: Transport): Promise<void> {
+    this.store.set({ transport });
+    if (this.store.get().live) await this.publishCurrent();
+    this.pushSync();
+  }
+
   async setLossProtection(lossProtection: boolean): Promise<void> {
     this.store.set({ lossProtection });
     if (this.store.get().live) await this.publishCurrent();
@@ -241,7 +283,14 @@ export class HostSession {
   }
 
   private async publishCurrent(): Promise<void> {
-    const { source } = this.store.get();
+    const { source, transport } = this.store.get();
+    if (transport === 'lossless') {
+      await this.conn.unpublishAudio();
+      await this.startLossless(source);
+      return;
+    }
+    this.lossless.stop();
+    this.closeCaptureGraph();
     const policy = this.policy(source);
     let track: MediaStreamTrack | undefined;
     let name: string;
@@ -256,11 +305,32 @@ export class HostSession {
     await this.conn.publishAudio(track, policy, name);
   }
 
+  private async startLossless(source: SourceKind): Promise<void> {
+    if (source === 'file') {
+      this.closeCaptureGraph();
+      const format = this.currentFormat();
+      const { ctx, source: node } = this.player.getTapSource(format.sampleRate);
+      await this.lossless.start(ctx, node, format.bitDepth);
+      return;
+    }
+    const track = this.capture?.track;
+    if (!track) throw new Error('No active audio source');
+    if (!this.captureGraph) {
+      const rate = track.getSettings().sampleRate ?? 48_000;
+      const ctx = createPlaybackContext('interactive', rate);
+      const node = ctx.createMediaStreamSource(new MediaStream([track]));
+      this.captureGraph = { ctx, source: node };
+      void ctx.resume();
+    }
+    // Captured audio arrives as float from the OS mixer; 24-bit keeps its full precision.
+    await this.lossless.start(this.captureGraph.ctx, this.captureGraph.source, 24);
+  }
+
   // ---- sync --------------------------------------------------------------
 
   private pushSync(): void {
     if (this.store.get().phase !== 'ready') return;
-    const { source, live, captureLabel } = this.store.get();
+    const { source, live, captureLabel, transport } = this.store.get();
     if (source === 'file') {
       const p = this.player.store.get();
       const status: PlaybackStatus =
@@ -273,6 +343,7 @@ export class HostSession {
         sourceKind: 'file',
         title: p.title,
         duration: p.duration,
+        transport,
       });
     } else {
       this.sync.update({
@@ -283,6 +354,7 @@ export class HostSession {
         sourceKind: source,
         title: captureLabel ?? (source === 'capture' ? 'Shared audio' : 'Live microphone'),
         duration: null,
+        transport,
       });
     }
   }
@@ -310,6 +382,7 @@ export class HostSession {
     if (this.disposed) return;
     this.disposed = true;
     this.disposer.dispose();
+    this.lossless.stop();
     this.releaseCapture();
     await this.conn.disconnect();
     this.player.dispose();

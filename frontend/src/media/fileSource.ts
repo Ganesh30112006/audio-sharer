@@ -1,3 +1,5 @@
+import { DEFAULT_FORMAT, type SourceFormat } from './audioFormat';
+
 /**
  * Local audio files. Files stay on the host device: they're played from an
  * object URL and streamed as encoded audio; nothing is uploaded or stored.
@@ -53,16 +55,18 @@ export interface QueueItem {
   title: string;
   size: number;
   mime: string;
+  /** Native PCM format (lossless transport runs at this rate/bit depth). */
+  format: SourceFormat;
 }
 
 /** Holds File handles and their object URLs; URLs are revoked deterministically. */
 export class FileLibrary {
   private files = new Map<string, { file: File; url: string | null }>();
 
-  add(file: File, mime: string): QueueItem {
+  add(file: File, mime: string, format: SourceFormat = DEFAULT_FORMAT): QueueItem {
     const id = crypto.randomUUID().slice(0, 12);
     this.files.set(id, { file, url: null });
-    return { id, title: file.name.replace(/\.[^.]+$/, ''), size: file.size, mime };
+    return { id, title: file.name.replace(/\.[^.]+$/, ''), size: file.size, mime, format };
   }
 
   /** Lazily creates the object URL so only the active track holds one. */

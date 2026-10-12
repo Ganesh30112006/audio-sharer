@@ -11,6 +11,7 @@ import { burstWav } from './wav';
  */
 interface Scenario {
   name: string;
+  transport?: 'opus' | 'lossless';
   bufferMode: 'auto' | 'stable';
   /** Listener-side WebRTC impairment via Chrome DevTools network emulation. */
   impair?: { latency: number; packetLoss: number; packetReordering?: boolean };
@@ -18,6 +19,14 @@ interface Scenario {
 
 const scenarios: Scenario[] = [
   { name: 'clean network, auto buffer', bufferMode: 'auto' },
+  { name: 'lossless, clean network, auto buffer', transport: 'lossless', bufferMode: 'auto' },
+  { name: 'lossless, clean network, stable buffer', transport: 'lossless', bufferMode: 'stable' },
+  {
+    name: 'lossless, 3% packet loss, auto buffer',
+    transport: 'lossless',
+    bufferMode: 'auto',
+    impair: { latency: 0, packetLoss: 3 },
+  },
   { name: 'clean network, stable buffer', bufferMode: 'stable' },
   {
     name: '3% packet loss, auto buffer',
@@ -31,17 +40,25 @@ const scenarios: Scenario[] = [
   },
 ];
 
-for (const { name, bufferMode, impair } of scenarios) {
+for (const { name, bufferMode, impair, transport = 'opus' } of scenarios) {
   test(`pipeline latency: ${name}`, async ({ browser }) => {
     const hostCtx = await browser.newContext();
     const listenerCtx = await browser.newContext();
     for (const c of [hostCtx, listenerCtx]) {
-      await c.addInitScript((mode) => {
-        localStorage.setItem(
-          'mc.settings.v1',
-          JSON.stringify({ displayName: 'Probe', bufferMode: mode, showDiagnostics: true }),
-        );
-      }, bufferMode);
+      await c.addInitScript(
+        ([mode, t]) => {
+          localStorage.setItem(
+            'mc.settings.v1',
+            JSON.stringify({
+              displayName: 'Probe',
+              bufferMode: mode,
+              showDiagnostics: true,
+              transport: t,
+            }),
+          );
+        },
+        [bufferMode, transport] as const,
+      );
     }
     await installOnsetProbe(hostCtx, 'host');
     await installOnsetProbe(listenerCtx, 'listener');
@@ -86,8 +103,11 @@ for (const { name, bufferMode, impair } of scenarios) {
     await host.waitForTimeout(25_000);
 
     const lat = pairLatencies(await readOnsets(host), await readOnsets(listener)).slice(3);
-    const metric = async (k: string) =>
-      ((await listener.locator(`[data-metric="${k}"] dd`).textContent()) ?? '').trim();
+    // Missing metrics (e.g. lossless stats in Opus mode) read as '' instead of waiting.
+    const metric = async (k: string) => {
+      const el = listener.locator(`[data-metric="${k}"] dd`);
+      return (await el.count()) ? ((await el.textContent()) ?? '').trim() : '';
+    };
     const result = {
       scenario: name,
       samples: lat.length,
@@ -96,10 +116,12 @@ for (const { name, bufferMode, impair } of scenarios) {
       minMs: Math.round(Math.min(...lat)),
       maxMs: Math.round(Math.max(...lat)),
       packetLoss: await metric('Packet loss'),
+      losslessUnderruns: await metric('lossless Underruns'),
+      losslessBuffer: await metric('lossless Buffer'),
       concealmentEvents: await metric('Concealment events'),
       jitterBuffer: await metric('Jitter buffer'),
       listenerBitrate: await metric('Bitrate'),
-      hostBitrate: ((await host.locator('[data-metric="Bitrate"] dd').textContent()) ?? '').trim(),
+      transport,
     };
     console.log(`[latency] ${JSON.stringify(result)}`);
     test.info().annotations.push({ type: 'latency', description: JSON.stringify(result) });

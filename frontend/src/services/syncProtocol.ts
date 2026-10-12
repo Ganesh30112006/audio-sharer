@@ -1,7 +1,8 @@
-import type { PlaybackState, PlaybackStatus, SourceKind } from '../types/sync';
+import type { PlaybackState, PlaybackStatus, SourceKind, Transport } from '../types/sync';
 
 const STATUSES: readonly PlaybackStatus[] = ['playing', 'paused', 'stopped'];
 const KINDS: readonly SourceKind[] = ['file', 'capture', 'microphone'];
+const TRANSPORTS: readonly Transport[] = ['opus', 'lossless'];
 const MAX_MESSAGE_BYTES = 2048;
 
 const encoder = new TextEncoder();
@@ -40,6 +41,7 @@ export function decodeState(bytes: Uint8Array): PlaybackState | null {
   if (!strOrNull(s.sourceId, 64) || !strOrNull(s.title, 256)) return null;
   if (s.sourceKind !== null && !KINDS.includes(s.sourceKind as SourceKind)) return null;
   if (s.duration !== null && (!isNum(s.duration) || s.duration < 0)) return null;
+  if (!TRANSPORTS.includes(s.transport as Transport)) return null;
   return {
     epoch: s.epoch,
     rev: s.rev,
@@ -51,6 +53,7 @@ export function decodeState(bytes: Uint8Array): PlaybackState | null {
     title: s.title,
     duration: s.duration as number | null,
     at: s.at,
+    transport: s.transport as Transport,
   };
 }
 

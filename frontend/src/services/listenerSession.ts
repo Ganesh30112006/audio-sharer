@@ -1,6 +1,8 @@
+import { LOSSLESS_TARGET_MS, LosslessReceiver } from '../audio/lossless/LosslessReceiver';
 import { MultiOutputPlayer } from '../audio/MultiOutputPlayer';
 import { DEFAULT_OUTPUT } from '../audio/outputDevices';
 import type { RoomInfo } from '../types/room';
+import { PCM_TOPIC, SYNC_TOPIC, type Transport } from '../types/sync';
 import { ServerClock } from '../utils/clock';
 import { Disposer } from '../utils/disposer';
 import { createStore, type Store } from '../utils/store';
@@ -34,21 +36,35 @@ export class ListenerSession {
     hasAudio: false,
     error: null,
   });
+  readonly lossless = new LosslessReceiver();
   private disposer = new Disposer();
   private disposed = false;
+  private remoteStream: MediaStream | null = null;
+  private losslessStream: MediaStream | null = null;
+  private playing: MediaStream | null = null;
 
   constructor(readonly code: string) {
     this.disposer.add(
       this.conn.events.on('remoteAudio', ({ stream }) => {
-        this.outputs.setSource(stream ? { kind: 'stream', stream } : null);
-        this.store.set({ hasAudio: !!stream });
+        this.remoteStream = stream;
+        this.selectSource();
       }),
     );
     this.disposer.add(
-      this.conn.events.on('data', ({ payload, from }) => {
+      this.lossless.events.on('stream', (stream) => {
+        this.losslessStream = stream;
+        this.selectSource();
+      }),
+    );
+    this.disposer.add(
+      this.conn.events.on('data', ({ payload, from, topic }) => {
         if (from !== HOST_IDENTITY) return;
-        const state = decodeState(payload);
-        if (state) this.sync.accept(state);
+        if (topic === PCM_TOPIC) {
+          this.lossless.push(payload);
+        } else if (topic === SYNC_TOPIC) {
+          const state = decodeState(payload);
+          if (state && this.sync.accept(state)) this.selectSource();
+        }
       }),
     );
     this.disposer.add(settingsStore.subscribe(() => this.applyBufferMode()));
@@ -95,8 +111,28 @@ export class ListenerSession {
   }
 
   private applyBufferMode(): void {
-    const stable = settingsStore.get().bufferMode === 'stable';
-    this.conn.setPlayoutDelay(stable ? STABLE_BUFFER_SECONDS : 0);
+    const mode = settingsStore.get().bufferMode;
+    this.conn.setPlayoutDelay(mode === 'stable' ? STABLE_BUFFER_SECONDS : 0);
+    this.lossless.setTargetMs(LOSSLESS_TARGET_MS[mode]);
+  }
+
+  /** The host announces its transport in the sync state; play the matching stream. */
+  private selectSource(): void {
+    const announced = this.sync.store.get().playback?.transport;
+    const transport: Transport = announced ?? (this.losslessStream ? 'lossless' : 'opus');
+    if (transport === 'opus' && this.losslessStream) this.lossless.stop();
+    const stream = transport === 'lossless' ? this.losslessStream : this.remoteStream;
+    if (stream !== this.playing) {
+      this.playing = stream;
+      this.outputs.setSource(stream ? { kind: 'stream', stream } : null);
+    }
+    this.store.set({ hasAudio: !!stream });
+  }
+
+  /** Retry audio after an autoplay block; call from a user gesture. */
+  async resumeAudio(): Promise<void> {
+    await this.lossless.resume();
+    await this.outputs.resume();
   }
 
   async leave(): Promise<void> {
@@ -108,6 +144,7 @@ export class ListenerSession {
     if (this.disposed) return;
     this.disposed = true;
     this.disposer.dispose();
+    this.lossless.dispose();
     this.outputs.dispose();
     await this.conn.disconnect();
     this.sync.reset();

@@ -28,26 +28,29 @@ interface Tap {
 }
 
 /**
- * Plays local files through a single HTMLAudioElement. When broadcasting, a
- * Web Audio tap turns the element output into a MediaStreamTrack without
- * re-decoding: element -> source -> destination stream (to WebRTC)
- *                                 \-> monitor gain -> speakers.
+ * Plays local files through an HTMLAudioElement. When broadcasting, a Web
+ * Audio tap exposes the decoded audio without re-decoding:
+ *   element -> source -> destination stream (Opus/WebRTC)
+ *                     \-> lossless capture worklet (attached by the sender)
+ *                     \-> monitor gain -> speakers
  * The host's volume only changes the monitor, never the broadcast level.
+ *
+ * The tap's AudioContext can run at the file's native sample rate (lossless
+ * mode). An element can only ever feed one context, so changing that rate
+ * swaps in a fresh element, preserving position and play state.
  */
 export class LocalFilePlayer {
-  readonly el: HTMLAudioElement;
+  private _el: HTMLAudioElement;
   readonly store: Store<FilePlayerState>;
-  /** Discrete state changes the sync layer should consider broadcasting. */
-  readonly events = new Emitter<{ change: void; ended: void }>();
+  /** Discrete state changes the sync layer should consider broadcasting; tapchange = tap rebuilt. */
+  readonly events = new Emitter<{ change: void; ended: void; tapchange: void }>();
   private tap: Tap | null = null;
   private disposer = new Disposer();
   private sinkId = '';
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
-    this.el = new Audio();
-    this.el.preload = 'auto';
-    this.el.crossOrigin = 'anonymous';
+    this._el = LocalFilePlayer.createElement();
     this.store = createStore<FilePlayerState>({
       status: 'idle',
       currentId: null,
@@ -62,8 +65,21 @@ export class LocalFilePlayer {
     this.bindElement();
   }
 
+  get el(): HTMLAudioElement {
+    return this._el;
+  }
+
+  private static createElement(): HTMLAudioElement {
+    const el = new Audio();
+    el.preload = 'auto';
+    el.crossOrigin = 'anonymous';
+    return el;
+  }
+
   private bindElement(): void {
-    const el = this.el;
+    this.disposer.dispose();
+    this.disposer = new Disposer();
+    const el = this._el;
     const set = this.store.set;
     const changed = () => this.events.emit('change', undefined);
     const on = (type: string, fn: () => void) => this.disposer.listen(el, type, fn);
@@ -186,28 +202,76 @@ export class LocalFilePlayer {
    * an element can only ever be attached to one MediaElementSource.
    */
   getBroadcastTrack(): MediaStreamTrack {
-    if (!this.tap) {
-      // 'interactive' renders in small blocks: measured ~20 ms lower end-to-end
-      // latency than 'playback' (median ~45 ms vs ~68 ms on a clean network).
-      const ctx = createPlaybackContext('interactive');
-      const source = ctx.createMediaElementSource(this.el);
-      const dest = ctx.createMediaStreamDestination();
-      dest.channelCount = 2;
-      const monitorGain = ctx.createGain();
-      const { volume, monitor } = this.store.get();
-      monitorGain.gain.value = monitor ? volume : 0;
-      this.el.volume = 1;
-      this.el.muted = false;
-      source.connect(dest);
-      source.connect(monitorGain).connect(ctx.destination);
-      this.tap = { ctx, source, dest, monitorGain };
-      if (this.sinkId) void setContextSink(ctx, this.sinkId).catch(() => undefined);
-      if (!this.el.paused) void ctx.resume();
-    }
-    const [track] = this.tap.dest.stream.getAudioTracks();
+    const tap = this.ensureTap();
+    const [track] = tap.dest.stream.getAudioTracks();
     if (!track) throw new Error('Audio tap produced no track');
     track.contentHint = 'music';
     return track;
+  }
+
+  /**
+   * The tap's context and source node, at `sampleRate` if given (rebuilding
+   * the element when the current tap runs at a different rate).
+   */
+  getTapSource(sampleRate?: number): { ctx: AudioContext; source: AudioNode } {
+    const tap = this.ensureTap(sampleRate);
+    return { ctx: tap.ctx, source: tap.source };
+  }
+
+  private ensureTap(sampleRate?: number): Tap {
+    if (this.tap && sampleRate !== undefined && this.tap.ctx.sampleRate !== sampleRate) {
+      this.replaceElement();
+    }
+    if (this.tap) return this.tap;
+    // 'interactive' renders in small blocks: measured ~20 ms lower end-to-end
+    // latency than 'playback' (median ~45 ms vs ~68 ms on a clean network).
+    const ctx = createPlaybackContext('interactive', sampleRate ?? 48_000);
+    const source = ctx.createMediaElementSource(this._el);
+    const dest = ctx.createMediaStreamDestination();
+    dest.channelCount = 2;
+    const monitorGain = ctx.createGain();
+    const { volume, monitor } = this.store.get();
+    monitorGain.gain.value = monitor ? volume : 0;
+    this._el.volume = 1;
+    this._el.muted = false;
+    source.connect(dest);
+    source.connect(monitorGain).connect(ctx.destination);
+    this.tap = { ctx, source, dest, monitorGain };
+    if (this.sinkId) void setContextSink(ctx, this.sinkId).catch(() => undefined);
+    if (!this._el.paused) void ctx.resume();
+    else this.scheduleIdleSuspend();
+    return this.tap;
+  }
+
+  /** Swap in a fresh element (and drop the tap), keeping source, position and play state. */
+  private replaceElement(): void {
+    const old = this._el;
+    const src = old.getAttribute('src');
+    const position = old.currentTime;
+    const wasPlaying = !old.paused && !old.ended;
+    this.disposer.dispose();
+    this.teardownTap();
+    old.pause();
+    old.removeAttribute('src');
+    old.load();
+    this._el = LocalFilePlayer.createElement();
+    this.bindElement();
+    if (src) {
+      this._el.src = src;
+      this._el.currentTime = position;
+      if (wasPlaying) void this.play();
+    }
+    this.events.emit('tapchange', undefined);
+  }
+
+  private teardownTap(): void {
+    if (!this.tap) return;
+    this.cancelIdleSuspend();
+    this.tap.dest.stream.getTracks().forEach((t) => t.stop());
+    this.tap.source.disconnect();
+    this.tap.monitorGain.disconnect();
+    void this.tap.ctx.close().catch(() => undefined);
+    this.tap = null;
   }
 
   get isTapped(): boolean {
@@ -242,12 +306,6 @@ export class LocalFilePlayer {
     this.el.pause();
     this.el.removeAttribute('src');
     this.el.load();
-    if (this.tap) {
-      this.tap.dest.stream.getTracks().forEach((t) => t.stop());
-      this.tap.source.disconnect();
-      this.tap.monitorGain.disconnect();
-      void this.tap.ctx.close().catch(() => undefined);
-      this.tap = null;
-    }
+    this.teardownTap();
   }
 }

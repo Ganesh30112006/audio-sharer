@@ -1,5 +1,7 @@
 export type PlaybackStatus = 'playing' | 'paused' | 'stopped';
 export type SourceKind = 'file' | 'capture' | 'microphone';
+/** opus: WebRTC media track (lowest latency). lossless: PCM blocks over the reliable data channel. */
+export type Transport = 'opus' | 'lossless';
 
 /** Authoritative playback state published by the host (kept intentionally small). */
 export interface PlaybackState {
@@ -18,6 +20,8 @@ export interface PlaybackState {
   duration: number | null;
   /** Server wall-clock ms of this state change. */
   at: number;
+  transport: Transport;
 }
 
 export const SYNC_TOPIC = 'mc.sync.v1';
+export const PCM_TOPIC = 'mc.pcm.v1';

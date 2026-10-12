@@ -7,7 +7,7 @@ import type {
 } from 'livekit-client';
 import type { SourcePolicy } from '../audio/sourcePolicy';
 import type { ConnectionState, ParticipantSummary, Quality, Role, TokenGrant } from '../types/room';
-import { SYNC_TOPIC } from '../types/sync';
+import { PCM_TOPIC, SYNC_TOPIC } from '../types/sync';
 import { Disposer } from '../utils/disposer';
 import { Emitter } from '../utils/emitter';
 import { createStore, type Store } from '../utils/store';
@@ -39,7 +39,7 @@ export interface RoomConnectionState {
 }
 
 interface RoomEvents {
-  data: { payload: Uint8Array; from: string };
+  data: { payload: Uint8Array; from: string; topic: string };
   remoteAudio: { stream: MediaStream | null; track: RemoteTrack | null };
   participantJoined: { identity: string };
   [key: string]: unknown;
@@ -205,8 +205,8 @@ export class RoomConnection {
       _k?: unknown,
       topic?: string,
     ) => {
-      if (topic !== SYNC_TOPIC || !p) return;
-      this.events.emit('data', { payload, from: p.identity });
+      if ((topic !== SYNC_TOPIC && topic !== PCM_TOPIC) || !p) return;
+      this.events.emit('data', { payload, from: p.identity, topic });
     }) as never);
 
     if (this.role === 'listener') {
@@ -300,12 +300,16 @@ export class RoomConnection {
     this.store.set({ publishing: false });
   }
 
-  async sendData(payload: Uint8Array<ArrayBuffer>, to?: string[]): Promise<void> {
+  async sendData(
+    payload: Uint8Array<ArrayBuffer>,
+    to?: string[],
+    topic = SYNC_TOPIC,
+  ): Promise<void> {
     const room = this.room;
     if (!room || this.store.get().state !== 'connected') return;
     await room.localParticipant.publishData(payload, {
       reliable: true,
-      topic: SYNC_TOPIC,
+      topic,
       destinationIdentities: to,
     });
   }

@@ -17,15 +17,20 @@ import { sineWav } from './wav';
  *   SOAK_MINUTES=60 npx playwright test e2e/perf.spec.ts -g soak
  */
 const SOAK_MINUTES = Number(process.env.SOAK_MINUTES ?? 3);
+/** PERF_TRANSPORT=lossless runs the same measurements over the lossless data-channel path. */
+const TRANSPORT = process.env.PERF_TRANSPORT === 'lossless' ? 'lossless' : 'opus';
 
 async function ctxWithSettings(browser: Browser, name: string): Promise<BrowserContext> {
   const ctx = await browser.newContext();
-  await ctx.addInitScript((n) => {
-    localStorage.setItem(
-      'mc.settings.v1',
-      JSON.stringify({ displayName: n, showDiagnostics: true }),
-    );
-  }, name);
+  await ctx.addInitScript(
+    ([n, transport]) => {
+      localStorage.setItem(
+        'mc.settings.v1',
+        JSON.stringify({ displayName: n, showDiagnostics: true, transport }),
+      );
+    },
+    [name, TRANSPORT] as const,
+  );
   return ctx;
 }
 

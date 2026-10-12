@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Headphones, LogOut, Play, Radio } from 'lucide-react';
 import { getCapabilities } from '../audio/capabilities';
 import { DiagnosticsPanel } from '../components/DiagnosticsPanel';
+import { LosslessStats } from '../components/LosslessStats';
 import { Notice } from '../components/Notice';
 import { OutputSelector } from '../components/OutputSelector';
 import { ProgressBar } from '../components/ProgressBar';
@@ -11,7 +12,7 @@ import { useSession } from '../hooks/useSession';
 import { useStore, useStoreState } from '../hooks/useStore';
 import { ListenerSession } from '../services/listenerSession';
 import { settingsStore, updateSettings } from '../services/settings';
-import { ROOM_CODE_RE } from '../utils/format';
+import { formatPcmLabel, ROOM_CODE_RE } from '../utils/format';
 
 const selShowDiag = (s: { showDiagnostics: boolean }) => s.showDiagnostics;
 
@@ -39,6 +40,10 @@ function ListenerRoom({ session }: { session: ListenerSession }) {
   const playback = useStore(session.sync.store, (s) => s.playback);
   const needsGesture = useStore(session.outputs.store, (s) => s.needsGesture);
   const showDiag = useStore(settingsStore, selShowDiag);
+  // Primitive selectors: the stats store updates ~2×/s, but these rarely change.
+  const losslessLabel = useStore(session.lossless.stats, (s) =>
+    s.active ? formatPcmLabel(s) : null,
+  );
   const [name, setName] = useState(settingsStore.get().displayName);
 
   useEffect(() => {
@@ -126,7 +131,7 @@ function ListenerRoom({ session }: { session: ListenerSession }) {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => void session.outputs.resume()}
+            onClick={() => void session.resumeAudio()}
           >
             <Play size={16} aria-hidden /> Start audio
           </button>
@@ -141,7 +146,14 @@ function ListenerRoom({ session }: { session: ListenerSession }) {
                 <Radio size={18} aria-hidden /> Now playing
               </h2>
               {live ? (
-                <span className="pill pill-danger">Live</span>
+                <span className="row" style={{ gap: 6 }}>
+                  {losslessLabel && (
+                    <span className="pill pill-success" data-testid="lossless-badge">
+                      Lossless · {losslessLabel}
+                    </span>
+                  )}
+                  <span className="pill pill-danger">Live</span>
+                </span>
               ) : (
                 <span className="pill">{hostHere ? 'Waiting for host' : 'Host offline'}</span>
               )}
@@ -159,6 +171,7 @@ function ListenerRoom({ session }: { session: ListenerSession }) {
               {state.hasAudio ? 'Receiving audio from the host.' : 'No audio stream yet.'}
             </p>
           </section>
+          <LosslessStats receiver={session.lossless.stats} />
           {showDiag && conn.state !== 'idle' && (
             <DiagnosticsPanel
               conn={session.conn}

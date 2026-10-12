@@ -62,7 +62,7 @@ jobs:
       - working-directory: frontend
         run: npm ci && npx playwright install --with-deps chromium
       - working-directory: frontend
-        run: npx playwright test e2e/streaming.spec.ts e2e/latency.spec.ts e2e/perf.spec.ts
+        run: npx playwright test e2e/streaming.spec.ts e2e/lossless.spec.ts e2e/latency.spec.ts e2e/perf.spec.ts
         env:
           SOAK_MINUTES: '3'
       - if: failure()

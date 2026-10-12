@@ -17,6 +17,7 @@ async function newContext(browser: import('@playwright/test').Browser): Promise<
         showDiagnostics: true,
         bufferMode: 'auto',
         quality: 'high',
+        transport: 'opus',
       }),
     );
     // Count peer connections so tests can assert none are leaked or duplicated.
