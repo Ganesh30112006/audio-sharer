@@ -42,6 +42,16 @@ Open http://localhost:5173, click **Create room**, add an audio file, and click
 
 ---
 
+## Screenshots
+
+| Host dashboard (lossless, 2 listeners)                   | Listener (phone width)                                        |
+| -------------------------------------------------------- | ------------------------------------------------------------- |
+| ![Host dashboard](docs/screenshots/2-host-dashboard.png) | ![Listener on a phone](docs/screenshots/4-listener-phone.png) |
+
+More in [`docs/screenshots/`](docs/screenshots/).
+
+---
+
 ## Broadcast modes
 
 | Mode                   | What listeners get                                                                             | Latency (measured, localhost) | Bandwidth per listener                                   |
@@ -173,16 +183,37 @@ All numbers were measured in a cloud Linux container with headless Chromium
 (Playwright) and LiveKit 1.12.0 on localhost. Real networks, phones and
 Bluetooth will differ. Re-run the specs to measure your own setup.
 
-| Metric                     | Result                                                                                  | How                                                                                              |
-| -------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Initial JS (gzip)          | ~101 KB of 250 KB budget; LiveKit SDK (~141 KB) loads lazily                            | `npm run build && npm run size`                                                                  |
-| Opus pipeline latency      | median ~45 ms (Studio, 'interactive' tap) vs ~68 ms with 'playback' (3 runs each)       | `e2e/latency.spec.ts`: onset detection on a click track, host pre-encode to listener post-decode |
-| Lossless latency           | median ~116 ms clean, ~138 ms at 3% loss, 0 underruns                                   | same                                                                                             |
-| Loss protection            | at 3% packet loss, concealment events 46 → 0 with RED (128 kbps)                        | same, CDP packet-loss emulation                                                                  |
-| Host uplink vs listeners   | flat (~256–261 kbps Opus High) for 1, 4 and 8 listeners                                 | `e2e/perf.spec.ts`                                                                               |
-| Lossless 192/24 throughput | ~7.4 Mbps sustained for 30 s, steady ~125 ms buffer, 0 underruns                        | `e2e/hires-throughput.spec.ts`                                                                   |
-| Codec (192/24 music)       | encode ~11 ms / decode ~12 ms per second of audio (was 116 / 72); identical compression | `npm run bench:codec`, baseline in `bench/results/baseline.json`                                 |
-| Codec allocations          | 1 typed array per block (the output)                                                    | same                                                                                             |
+| Metric                     | Result                                                                                               | How                                                                                              |
+| -------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Initial JS (gzip)          | ~101 KB of 250 KB budget; LiveKit SDK (~141 KB) loads lazily                                         | `npm run build && npm run size`                                                                  |
+| Opus pipeline latency      | median ~45 ms (Studio, 'interactive' tap) vs ~68 ms with 'playback' (3 runs each)                    | `e2e/latency.spec.ts`: onset detection on a click track, host pre-encode to listener post-decode |
+| Lossless latency           | median ~116 ms clean, ~138 ms at 3% loss, 0 underruns                                                | same                                                                                             |
+| Loss protection            | at 3% packet loss, concealment events 46 → 0 with RED (128 kbps)                                     | same, CDP packet-loss emulation                                                                  |
+| Host uplink vs listeners   | flat for 1, 2, 4 and 8 listeners: Opus Studio 510 kbps every time; lossless 139–173 kbps (test tone) | `e2e/perf.spec.ts -g fan-out` with `PERF_TRANSPORT=opus` or `lossless`                           |
+| Lossless 192/24 throughput | ~7.4 Mbps sustained for 30 s, steady ~125 ms buffer, 0 underruns                                     | `e2e/hires-throughput.spec.ts`                                                                   |
+| Codec (192/24 music)       | encode ~11 ms / decode ~12 ms per second of audio (was 116 / 72); identical compression              | `npm run bench:codec`, baseline in `bench/results/baseline.json`                                 |
+| Codec allocations          | 1 typed array per block (the output)                                                                 | same                                                                                             |
+
+**CPU** (percent of one core, 15 s window; host and listener each in their own
+browser instance, so all their processes are counted; `e2e/cpu.spec.ts`):
+
+| Scenario                          | Host total | Host main thread | Listener total | Listener main thread |
+| --------------------------------- | ---------- | ---------------- | -------------- | -------------------- |
+| Opus Studio                       | 22%        | 2.6%             | 17%            | 1.9%                 |
+| Lossless 44.1/16                  | 28%        | 4.7%             | 30%            | 4.7%                 |
+| Lossless 192/24 (codec in worker) | 48%        | 7.2%             | 42%            | 6.6%                 |
+| Lossless 192/24 (codec inline)    | 47%        | 8.8%             | 41%            | 8.8%                 |
+
+The codec worker moves ~2 points off the main (UI) thread, but total CPU stays
+the same. Most lossless cost is the browser's data-channel and Web Audio work,
+not the codec.
+
+**Integration gates** (`e2e/harness.spec.ts`, real worker and worklets): normal
+48/24 and 192/24, 3 s stall, slow link, sender restarts, receiver restarts,
+reordering transport, and a lifecycle soak (restart every 700 ms at 48/24
+stereo, 44.1/16 mono, 96/24 stereo and 192/24 mono). All pass, with exact
+frame accounting and 0 bit errors. Restart and soak tests passed 20/20 when
+repeated.
 
 ---
 
@@ -260,10 +291,10 @@ only **desktop Chromium on Linux** was actually tested.
 - Lossless needs 1–8 Mbps per listener and has about 70 ms more latency than
   Opus. Under sustained congestion it interrupts (announced) instead of
   degrading quality.
-- In one browser-integration run, a stale render quantum appeared right after
-  a capture restart. The current defense is that each capture generation
-  discards its first two render quanta and the source stays connected; this
-  is covered by the restart soak tests.
+- Right after a graph reconnect, Chromium can deliver one stale render
+  quantum. The defense: the source stays connected across restarts, and each
+  capture generation discards its first two quanta (~3–5 ms, never counted as
+  delivered). Verified 20/20 in repeated restart soaks.
 - The room registry and rate limiter live in-process, so the API runs on a
   single instance.
 - Multiple outputs are aligned only through manual delay sliders; browsers
