@@ -72,12 +72,16 @@ What "lossless" guarantees, and what it doesn't:
   (overload, network stall, restart), the stream reports an **explicit
   interruption** and playback restarts cleanly. Audio is never silently
   dropped, and playback never splices across a gap. This includes the
-  network path: a block the data channel can't take is reported as a
-  transport interruption, never counted as sent.
+  network path: while the connection is down or reconnecting, captured audio
+  is counted in one transport interruption (never handed to the SDK's
+  reconnect buffer, which would deliver it later as a stale burst), and the
+  first block afterwards is flagged so listeners restart cleanly.
 - When the host pauses, its audio graph is suspended after 1.5 s. The first
-  block after resuming is marked as a discontinuity, so listeners restart
-  cleanly instead of reading the pause as network delay (which would inflate
-  their buffer by the pause length).
+  block after resuming carries a timing-reset flag (samples are contiguous,
+  only wall time jumped), so listeners restart their jitter tracking instead
+  of reading the pause as network delay, which would inflate their buffer by
+  the pause length. Nothing is flushed, and the pause is not counted as an
+  outage.
 - The playback buffer adapts to the connection (auto mode) using a hybrid of
   three models: a short-term one (the spread of block arrival times over the
   last ~10 s, measured on the audio thread), a long-term one (a decaying
@@ -175,7 +179,7 @@ same origin; the Vite dev server proxies `/api`.
 
 ```bash
 cd backend && pytest -q && ruff check . && ruff format --check .
-cd frontend && npm run lint && npm run typecheck && npm test   # 142 unit tests
+cd frontend && npm run lint && npm run typecheck && npm test   # 151 unit tests
 cd frontend && npm run bench:codec                                # codec benchmark → bench/results/*.json
 
 # Browser tests need a LiveKit server (dev keys):
@@ -186,19 +190,19 @@ cd frontend && npx playwright test e2e/streaming.spec.ts e2e/lossless.spec.ts e2
 
 Main suites:
 
-| Suite                                                               | What it proves                                                                                                                      |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/unit/losslessCodec`, `bitio`                                 | Bit-exact round trips (silence, impulses, extremes, noise, 1–8 channels, 16/24-bit), protocol validation, a 2,000-case garbage fuzz |
-| `tests/unit/captureAssembler`                                       | Channel-layout changes and timeline gaps at every offset within a block; no lost or mixed frames                                    |
-| `tests/unit/captureLifecycle`                                       | Start/stop races driven by deferred promises: no stale attach, at most one producer                                                 |
-| `tests/unit/losslessPipeline`                                       | Deterministic overload simulations: slow encoder, slow or stalled network, slow decoder, restarts; checks exact accounting          |
-| `e2e/streaming`                                                     | Real LiveKit: audible Opus delivery, join/leave leaks, duplicate-host takeover, Studio reaches 510 kbps                             |
-| `e2e/lossless`                                                      | Real LiveKit: bit-exact delivery at 44.1/16, 96/24 and 192/24                                                                       |
-| `e2e/harness`                                                       | Real worker and worklets with a controllable link: stall, slow link, restarts, reordering, lifecycle soak                           |
-| `e2e/lossless-pause`                                                | Host pause and resume: the listener's buffer comes back at its normal size, no unannounced gaps                                     |
-| `e2e/user-flows`                                                    | Track change across formats (44.1/16 → 48/24) and live lossless → Opus → lossless switches, with zero page errors                   |
-| `tests/unit/playbackWorklet`, `codecClient`, `losslessReceiver`     | The real playback worklet's frame accounting (incl. ring overflow); codec worker crash recovery; failed playback-graph builds       |
-| `e2e/latency`, `latency-profile`, `perf`, `cpu`, `hires-throughput` | Benchmarks, run manually (not in CI); `scripts/latency-trials.sh` interleaves latency-profile trials                                |
+| Suite                                                                                     | What it proves                                                                                                                                                                |
+| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/unit/losslessCodec`, `bitio`                                                       | Bit-exact round trips (silence, impulses, extremes, noise, 1–8 channels, 16/24-bit), protocol validation, a 2,000-case garbage fuzz                                           |
+| `tests/unit/captureAssembler`                                                             | Channel-layout changes and timeline gaps at every offset within a block; no lost or mixed frames                                                                              |
+| `tests/unit/captureLifecycle`                                                             | Start/stop races driven by deferred promises: no stale attach, at most one producer                                                                                           |
+| `tests/unit/losslessPipeline`                                                             | Deterministic overload simulations: slow encoder, slow or stalled network, slow decoder, restarts; checks exact accounting                                                    |
+| `e2e/streaming`                                                                           | Real LiveKit: audible Opus delivery, join/leave leaks, duplicate-host takeover, Studio reaches 510 kbps                                                                       |
+| `e2e/lossless`                                                                            | Real LiveKit: bit-exact delivery at 44.1/16, 96/24 and 192/24                                                                                                                 |
+| `e2e/harness`                                                                             | Real worker and worklets with a controllable link: stall, slow link, restarts, reordering, lifecycle soak                                                                     |
+| `e2e/lossless-pause`                                                                      | Host pauses of 2 s and 5 s: the listener's buffer comes back at its normal size, no gaps, no outage counted                                                                   |
+| `e2e/user-flows`                                                                          | Track change across formats (44.1/16 → 48/24) and live lossless → Opus → lossless switches, with zero page errors                                                             |
+| `tests/unit/playbackWorklet`, `codecClient`, `losslessReceiver`, `losslessPipelineFaults` | The real playback worklet (accounting incl. ring overflow; pause handling); codec worker crash; failed or repeated graph builds; transport down, failed encode, failed decode |
+| `e2e/latency`, `latency-profile`, `perf`, `cpu`, `hires-throughput`                       | Benchmarks, run manually (not in CI); `scripts/latency-trials.sh` interleaves latency-profile trials                                                                          |
 
 ---
 

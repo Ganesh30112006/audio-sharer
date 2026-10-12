@@ -61,6 +61,7 @@ export class HostSession {
     (payload) => this.conn.sendData(payload, undefined, PCM_TOPIC),
     () => this.clock.now(),
     this.latencyTrace,
+    () => this.conn.isConnected,
   );
   private capture: OwnedCapture | null = null;
   /** Web Audio graph feeding a capture track to the lossless sender. */

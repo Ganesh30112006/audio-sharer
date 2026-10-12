@@ -4,6 +4,7 @@ import {
   decodeBlock,
   encodeBlock,
   HEADER_BYTES,
+  peekHeader,
   type PcmBlock,
 } from '../../src/audio/lossless/codec';
 
@@ -111,9 +112,25 @@ describe('block sizing', () => {
   });
 });
 
+describe('timing reset flag', () => {
+  it('round-trips and is independent of the discontinuity flag', () => {
+    const b = encodeBlock({
+      seq: 9,
+      sampleRate: 48_000,
+      channels: 2,
+      bitDepth: 16,
+      samples: new Int32Array(64 * 2).fill(5),
+      timingReset: true,
+    });
+    const h = peekHeader(b);
+    expect(h.timingReset).toBe(true);
+    expect(h.discontinuity).toBe(false);
+    expect(decodeBlock(b).samples[0]).toBe(5);
+  });
+});
+
 describe('header v2', () => {
   it('carries continuity metadata', async () => {
-    const { peekHeader } = await import('../../src/audio/lossless/codec');
     const b = {
       ...block(64, 2, 16, music(16)),
       firstFrame: 4_294_967_000,

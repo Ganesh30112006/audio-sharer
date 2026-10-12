@@ -27,4 +27,15 @@ describe('RenderPauseDetector', () => {
     d.reset();
     expect(d.check(10_000, 0)).toBe(false); // first sample after reset
   });
+
+  it('by default catches the 0.5 s jump a 2 s host pause leaves', () => {
+    // The host sends silence for 1.5 s before its graph is suspended.
+    const d = new RenderPauseDetector();
+    d.check(0, 0);
+    expect(d.check(510, 10)).toBe(true);
+    // Normal block cadence with a page thread lagging one device callback: no.
+    const e = new RenderPauseDetector();
+    e.check(0, 0);
+    expect(e.check(50, 10)).toBe(false);
+  });
 });

@@ -107,11 +107,14 @@ export class LosslessSender {
 
   /**
    * @param trace optional per-block latency trace (benchmarks/diagnostics).
+   * @param canSend false while the transport can't take data; captured audio
+   *   is then counted in one explicit interruption instead of being sent.
    */
   constructor(
     send: Send,
     serverNow: () => number,
     private readonly trace: SenderTrace | null = null,
+    canSend?: () => boolean,
   ) {
     const traced: Send = trace
       ? (payload) => {
@@ -140,6 +143,7 @@ export class LosslessSender {
           job.block.samples.buffer,
         ]),
       send: traced,
+      canSend,
     });
     this.capture = new CaptureLifecycle<AudioContext>(
       (ctx, onMessage) => LosslessSender.createNode(ctx, onMessage),
@@ -157,6 +161,9 @@ export class LosslessSender {
     if (!loaded) {
       loaded = ctx.audioWorklet.addModule(captureWorkletUrl);
       LosslessSender.modules.set(ctx, loaded);
+      // Forget a failed load so the next start() tries again (a transient
+      // network error must not disable lossless on this context for good).
+      loaded.catch(() => LosslessSender.modules.delete(ctx));
     }
     await loaded;
     const node = new AudioWorkletNode(ctx, 'mc-pcm-capture', {
@@ -236,9 +243,10 @@ export class LosslessSender {
     }
     this.format.channels = data.channels;
     // A suspended context (host paused) resumes with contiguous samples; mark
-    // it so listeners restart instead of treating the pause as network delay.
+    // it so listeners restart jitter tracking instead of reading the pause as
+    // network delay.
     if (this.pauses.check(performance.now(), ctx.currentTime * 1000))
-      this.pipeline.markDiscontinuity();
+      this.pipeline.markTimingReset();
     const before = this.pipeline.log.current;
     const seq = this.pipeline.nextSeq;
     if (this.trace) {
@@ -293,6 +301,7 @@ export class LosslessSender {
       peakSendQueueBlocks: s.peakSendBlocks,
       peakOldestAgeMs: Math.round(s.peakOldestAgeMs),
       encoderUtilization: +(dBusy / dt).toFixed(3),
+      offMainThread: this.codec.offMainThread,
     });
   }
 

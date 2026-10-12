@@ -301,10 +301,12 @@ export class RoomConnection {
   }
 
   /**
-   * Sends on the reliable data channel. Resolves only when the SDK accepted
-   * the data; rejects when it can't be sent, so callers never count an unsent
-   * block as delivered. While reconnecting the SDK holds reliable data until
-   * the transport is back (or fails it), so the data is handed over.
+   * Sends on the reliable data channel. Resolves when the SDK took the data;
+   * rejects when not connected, so callers never count an unsent block as
+   * delivered. Reconnecting counts as not connected: livekit-client 2.x
+   * resolves reliable sends at once during a reconnect and parks them in an
+   * unbounded replay buffer (or drops them when no channel exists), which
+   * would deliver a burst of stale audio later, or nothing at all.
    */
   async sendData(
     payload: Uint8Array<ArrayBuffer>,
@@ -313,8 +315,7 @@ export class RoomConnection {
   ): Promise<void> {
     const room = this.room;
     const { state } = this.store.get();
-    if (!room || (state !== 'connected' && state !== 'reconnecting'))
-      throw new Error(`Not connected (${state})`);
+    if (!room || state !== 'connected') throw new Error(`Not connected (${state})`);
     await room.localParticipant.publishData(payload, {
       reliable: true,
       topic,

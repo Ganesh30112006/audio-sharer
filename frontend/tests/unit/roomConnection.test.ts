@@ -216,17 +216,22 @@ describe('RoomConnection', () => {
     await expect(conn.sendData(payload)).rejects.toThrow();
     await conn.connect(grant);
     const room = rooms[0]!;
-    // While reconnecting the SDK's reliable channel waits for the transport:
-    // hand the data over instead of dropping it.
-    room.emit('reconnecting');
     await conn.sendData(payload, undefined, 'mc.pcm.v1');
     expect(room.localParticipant.publishData).toHaveBeenCalledTimes(1);
+    // While reconnecting, livekit-client 2.x resolves reliable sends at once and
+    // parks them in an unbounded replay buffer (or drops them without a
+    // channel). Refuse instead, so the sender records an explicit interruption.
+    room.emit('reconnecting');
+    expect(conn.isConnected).toBe(false);
+    await expect(conn.sendData(payload)).rejects.toThrow(/reconnecting/);
+    room.emit('reconnected');
+    await conn.sendData(payload);
     // A failed hand-over is reported, not swallowed.
     room.localParticipant.publishData.mockRejectedValueOnce(new Error('transport closed'));
     await expect(conn.sendData(payload)).rejects.toThrow(/transport closed/);
     // Disconnected: rejected without a send attempt.
     room.emit('disconnected');
     await expect(conn.sendData(payload)).rejects.toThrow();
-    expect(room.localParticipant.publishData).toHaveBeenCalledTimes(2);
+    expect(room.localParticipant.publishData).toHaveBeenCalledTimes(3);
   });
 });

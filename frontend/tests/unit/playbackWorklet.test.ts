@@ -47,14 +47,14 @@ function create(opts: Record<string, unknown> = {}) {
   });
   let pushed = 0;
   let value = 0;
-  const push = (frames: number) => {
+  const push = (frames: number, extra: Record<string, unknown> = {}) => {
     const pcm = new Float32Array(frames * 2);
     for (let i = 0; i < frames; i++) {
       value = (value + 1) % 1000;
       pcm[i * 2] = pcm[i * 2 + 1] = value / 1000;
     }
     pushed += frames;
-    p.port.onmessage!({ data: { type: 'pcm', pcm } });
+    p.port.onmessage!({ data: { type: 'pcm', pcm, ...extra } });
   };
   const outputs = [[new Float32Array(QUANTUM), new Float32Array(QUANTUM)]];
   const render = (quanta: number) => {
@@ -109,5 +109,42 @@ describe('playback worklet accounting (decoded = played + skipped + buffered)', 
     w.render(100);
     const s = w.stats();
     expect(s.playedFrames + s.skippedFrames + s.bufferedFrames).toBe(w.pushed());
+  });
+});
+
+describe('playback worklet adaptive buffer after a source pause', () => {
+  /** Streams 10 ms blocks in real time; `gapMs` of silence from the source mid-way. */
+  function run(timingFlag: boolean, gapMs: number) {
+    const w = create({ adaptive: true, minMs: 20 });
+    let produced = 0; // frames due from the source so far (render clock)
+    let sent = 0;
+    let first = true;
+    const step = (quanta: number, sending: boolean) => {
+      for (let q = 0; q < quanta; q++) {
+        produced += QUANTUM;
+        while (sending && produced - sent >= 480) {
+          w.push(480, first && timingFlag ? { timing: true } : {});
+          first = false;
+          sent += 480;
+        }
+        w.render(1);
+      }
+    };
+    step(Math.round((3 * RATE) / QUANTUM), true); // 3 s streaming
+    step(Math.round(((gapMs / 1000) * RATE) / QUANTUM), false); // source paused
+    sent = produced; // the source resumes "now": its timeline continues seamlessly
+    first = true;
+    step(Math.round((4 * RATE) / QUANTUM), true); // 4 s streaming
+    return w.stats();
+  }
+
+  it('without a timing reset, the pause is mistaken for jitter (documents the failure mode)', () => {
+    expect(run(false, 2000).targetMs).toBeGreaterThan(300);
+  });
+
+  it('with the timing reset, the buffer stays at its normal size', () => {
+    const s = run(true, 2000);
+    expect(s.targetMs).toBeLessThan(80);
+    expect(s.playedFrames + s.skippedFrames + s.bufferedFrames).toBeGreaterThan(0);
   });
 });

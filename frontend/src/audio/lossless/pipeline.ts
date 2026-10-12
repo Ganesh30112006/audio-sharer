@@ -77,6 +77,7 @@ export class SendPipeline {
   private seq = 0;
   private frame = 0;
   private discontinuityNext = false;
+  private timingResetNext = false;
   /** Last seq admitted to the encode queue. */
   private lastAdmitted: number | null = null;
   /**
@@ -104,6 +105,12 @@ export class SendPipeline {
       serverNow: () => number;
       encode: (job: EncodeJob) => void;
       send: (payload: Uint8Array<ArrayBuffer>) => Promise<void>;
+      /**
+       * False while the transport can't take data (reconnecting, disconnected).
+       * Blocks captured meanwhile are counted in one open 'transport-error'
+       * interruption, and the first block after it is flagged.
+       */
+      canSend?: () => boolean;
     },
     limits = DEFAULT_SEND_LIMITS,
   ) {
@@ -117,11 +124,13 @@ export class SendPipeline {
   }
 
   /**
-   * The next admitted block starts a new playback timeline (the source was
-   * paused): listeners restart cleanly instead of reading the pause as delay.
+   * The source paused (its audio graph was suspended): samples are contiguous
+   * but wall time jumped. The next admitted block carries a timing reset so
+   * listeners restart their jitter tracking instead of reading the pause as
+   * network delay. Nothing is flushed, because nothing is missing.
    */
-  markDiscontinuity(): void {
-    this.discontinuityNext = true;
+  markTimingReset(): void {
+    this.timingResetNext = true;
   }
 
   /** Sequence number the next captured block will get (latency trace). */
@@ -170,14 +179,22 @@ export class SendPipeline {
     this.blocksCaptured++;
     this.capturedFrames += frames;
 
+    const transportUp = this.io.canSend?.() ?? true;
     if (this.log.current) {
-      if (this.encodeQ.belowResume() && this.sendQ.belowResume()) {
+      if (transportUp && this.encodeQ.belowResume() && this.sendQ.belowResume()) {
         this.log.end();
         this.discontinuityNext = true;
       } else {
         this.log.drop(frames);
         return;
       }
+    }
+    if (!transportUp) {
+      this.log.begin('transport-error', null);
+      // Blocks still being encoded can't be delivered either.
+      this.dropThrough = this.lastAdmitted;
+      this.log.drop(frames);
+      return;
     }
     const enc = this.encodeQ.overLimit();
     // Everything being encoded is headed for the send queue: count it there
@@ -208,9 +225,11 @@ export class SendPipeline {
         firstFrame,
         captureMs: this.io.serverNow() >>> 0,
         discontinuity: this.discontinuityNext,
+        timingReset: this.timingResetNext,
       },
     });
     this.discontinuityNext = false;
+    this.timingResetNext = false;
   }
 
   /**
@@ -274,7 +293,12 @@ export class SendPipeline {
     this.encodeQ.shift();
     const info = this.inflight.get(seq);
     this.inflight.delete(seq);
+    const wasOpen = !!this.log.current;
     this.log.begin('encoder-overload', null);
+    // Blocks queued behind the failed one were encoded without a discontinuity
+    // flag: they are claimed by this interruption, so the first block the
+    // receiver sees after the gap is the flagged one.
+    if (!wasOpen) this.dropThrough = this.lastAdmitted;
     this.log.drop(info?.frames ?? 0);
   }
 
@@ -330,6 +354,8 @@ export interface DecodeJob {
   meta: BlockHeader;
   /** Playback must flush and re-buffer before this block (gap upstream or here). */
   resetBefore: boolean;
+  /** The source paused before this block: restart jitter tracking (no flush). */
+  timingReset: boolean;
 }
 
 export interface ReceiveStats {
@@ -462,7 +488,13 @@ export class ReceivePipeline {
     }
 
     const copy = payload.slice() as Uint8Array<ArrayBuffer>;
-    const job: DecodeJob = { gen: this.gen, payload: copy, meta, resetBefore: this.resetNext };
+    const job: DecodeJob = {
+      gen: this.gen,
+      payload: copy,
+      meta,
+      resetBefore: this.resetNext,
+      timingReset: meta.timingReset,
+    };
     this.resetNext = false;
     this.decodeQ.push(meta.seq, payload.length);
     this.pendingMeta.set(meta.seq, job);
@@ -483,9 +515,18 @@ export class ReceivePipeline {
   decodeFailed(gen: number, seq: number): void {
     if (gen !== this.gen) return;
     this.decodeQ.shift();
+    const job = this.pendingMeta.get(seq);
     this.pendingMeta.delete(seq);
     this.counters.corrupt++;
     this.resetNext = true;
+    // The block can't be played: an explicit interruption, with its frames.
+    const frames = job?.meta.frames ?? 0;
+    if (this.log.current) this.log.drop(frames);
+    else {
+      this.log.begin('decode-error', null);
+      this.log.drop(frames);
+      this.log.end();
+    }
   }
 
   reset(): void {

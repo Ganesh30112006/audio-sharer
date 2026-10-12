@@ -12,6 +12,8 @@
  *   2  u8   version (2)
  *   3  u8   flags       bit0 = mid/side, bit1 = verbatim,
  *                       bit2 = discontinuity (first block after an interruption)
+ *                       bit3 = timing reset (samples contiguous, but the source
+ *                              paused: receivers restart jitter tracking)
  *   4  u32  seq         sender block counter (gap / duplicate / reorder detection)
  *   8  u32  sampleRate
  *   12 u8   channels    1..8
@@ -37,6 +39,8 @@ export interface PcmBlock {
   captureMs?: number;
   /** First block after an interruption: receivers must not treat the gap as loss. */
   discontinuity?: boolean;
+  /** First block after the source paused (no samples missing; wall time jumped). */
+  timingReset?: boolean;
 }
 
 export interface BlockHeader {
@@ -48,6 +52,7 @@ export interface BlockHeader {
   firstFrame: number;
   captureMs: number;
   discontinuity: boolean;
+  timingReset: boolean;
 }
 
 export const HEADER_BYTES = 24;
@@ -55,7 +60,8 @@ const VERSION = 2;
 const FLAG_MID_SIDE = 1;
 const FLAG_VERBATIM = 2;
 const FLAG_DISCONTINUITY = 4;
-const KNOWN_FLAGS = FLAG_MID_SIDE | FLAG_VERBATIM | FLAG_DISCONTINUITY;
+const FLAG_TIMING_RESET = 8;
+const KNOWN_FLAGS = FLAG_MID_SIDE | FLAG_VERBATIM | FLAG_DISCONTINUITY | FLAG_TIMING_RESET;
 const MAX_ORDER = 4;
 /** Channel header order value meaning "every sample equals one stored value". */
 const CONSTANT = 7;
@@ -446,7 +452,8 @@ export function encodeBlock(block: PcmBlock): Uint8Array<ArrayBuffer> {
   out[3] =
     (midSide && !verbatim ? FLAG_MID_SIDE : 0) |
     (verbatim ? FLAG_VERBATIM : 0) |
-    (block.discontinuity ? FLAG_DISCONTINUITY : 0);
+    (block.discontinuity ? FLAG_DISCONTINUITY : 0) |
+    (block.timingReset ? FLAG_TIMING_RESET : 0);
   dv.setUint32(4, block.seq >>> 0, true);
   dv.setUint32(8, block.sampleRate, true);
   out[12] = channels;
@@ -525,6 +532,7 @@ export function peekHeader(bytes: Uint8Array): BlockHeader {
     firstFrame: dv.getUint32(16, true),
     captureMs: dv.getUint32(20, true),
     discontinuity: (bytes[3]! & FLAG_DISCONTINUITY) !== 0,
+    timingReset: (bytes[3]! & FLAG_TIMING_RESET) !== 0,
   };
   validate(meta, meta.frames);
   return meta;

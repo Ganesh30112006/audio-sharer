@@ -6,7 +6,8 @@
  * sample timeline shows it. But the listener measures jitter against that
  * timeline, and would read the pause as network delay (and inflate its buffer
  * by the pause length). The sender therefore marks the first block after such
- * a pause as a discontinuity, and the listener restarts playback cleanly.
+ * a pause with a timing reset, and the listener restarts its jitter tracking
+ * (nothing is flushed: no samples are missing).
  *
  * A stall of the page thread is not a pause: the render clock keeps running,
  * blocks are only delivered late, so both clocks advance alike.
@@ -15,7 +16,13 @@ export class RenderPauseDetector {
   private lastWall = NaN;
   private lastCtx = NaN;
 
-  constructor(private readonly thresholdMs = 1000) {}
+  /**
+   * 200 ms: well above how far the page thread's view of currentTime lags
+   * (one device callback), and low enough to catch a short pause (the host
+   * keeps sending silence for 1.5 s before suspending, so a 2 s pause is a
+   * 0.5 s jump). A false positive only restarts jitter tracking.
+   */
+  constructor(private readonly thresholdMs = 200) {}
 
   /**
    * Call once per captured block with the page clock and the context's

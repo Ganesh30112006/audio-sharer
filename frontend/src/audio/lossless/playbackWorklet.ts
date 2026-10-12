@@ -104,6 +104,8 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
   private stallMemory = 0;
   private stallUpdated = 0;
   private adaptations = 0;
+  /** An underrun raised the target and playback has not restarted since. */
+  private underrunStepPending = false;
   /** Latency trace: ring of [seq, startFrame, arriveMs, level, target] and output items. */
   private readonly trace: boolean;
   private readonly pending: Float64Array | null;
@@ -130,10 +132,12 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
         type: string;
         pcm?: Float32Array;
         seq?: number;
+        timing?: boolean;
         targetMs?: number;
         adaptive?: boolean;
       };
       if (msg.type === 'pcm' && msg.pcm) {
+        if (msg.timing) this.sourceResumed();
         if (this.pending && msg.seq !== undefined) this.traceArrive(msg.seq);
         this.push(msg.pcm);
       } else if (msg.type === 'target' && msg.targetMs !== undefined) {
@@ -163,6 +167,20 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
     // smoothed level never triggers corrections, narrow enough that the level
     // never sits far below a small target.
     this.window = Math.max(this.frames(5), Math.min(this.frames(40), Math.round(this.target / 4)));
+  }
+
+  /**
+   * The source paused and resumed (timing reset): its samples continue, but
+   * arrival times jumped by the pause. Restart jitter tracking so the pause
+   * is not read as network delay, and take back the target step the pause's
+   * underrun added. Buffered audio is kept: nothing is missing.
+   */
+  private sourceResumed(): void {
+    this.resetTimeline();
+    if (this.underrunStepPending) {
+      this.setTarget(Math.max(this.minTarget, this.target - this.frames(UNDERRUN_STEP_MS)));
+      this.underrunStepPending = false;
+    }
   }
 
   private resetTimeline(): void {
@@ -301,6 +319,7 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
       }
       this.playing = true;
       this.started = true;
+      this.underrunStepPending = false;
       this.avgLevel = level;
       this.correcting = 0;
       this.port.postMessage({ type: 'state', playing: true });
@@ -313,6 +332,7 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
         this.setTarget(this.target + this.frames(UNDERRUN_STEP_MS));
         this.adaptations++;
         this.calmSince = currentTime;
+        this.underrunStepPending = true;
       }
       this.port.postMessage({ type: 'state', playing: false });
     }

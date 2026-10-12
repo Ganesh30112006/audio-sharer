@@ -233,6 +233,8 @@ export class LosslessReceiver {
           (err: unknown) => {
             this.buildFailedAt = performance.now();
             this.stats.set({ active: false, error: (err as Error)?.message ?? String(err) });
+            // The previous graph (if any) is gone: players must drop its stream.
+            this.events.emit('stream', null);
           },
         )
         .finally(() => {
@@ -276,9 +278,14 @@ export class LosslessReceiver {
     this.observer?.(job.meta, reply.pcm);
     this.trace?.decoded(job.meta.seq, reply.busyMs, this.ctx);
     if (job.resetBefore) this.node.port.postMessage({ type: 'reset' });
-    this.node.port.postMessage({ type: 'pcm', pcm: reply.pcm, seq: job.meta.seq }, [
-      reply.pcm.buffer,
-    ]);
+    if (job.timingReset && this.outageStart !== null) {
+      // The silence since the last block was the host pausing, not an outage.
+      this.outageStart = null;
+    }
+    this.node.port.postMessage(
+      { type: 'pcm', pcm: reply.pcm, seq: job.meta.seq, timing: job.timingReset || undefined },
+      [reply.pcm.buffer],
+    );
   }
 
   private onWorklet(
@@ -345,11 +352,18 @@ export class LosslessReceiver {
       peakDecodeQueueBlocks: s.peakDecodeBlocks,
       transitMs: s.lastTransitMs,
       decoderUtilization: util,
+      offMainThread: this.codec.offMainThread,
     });
   }
 
   private async build(first: Format): Promise<void> {
     this.teardown();
+    // A new graph is a new playback timeline: decodes still in flight for the
+    // old one become stale (ignored), and counters restart with the graph, so
+    // decoded = played + skipped + buffered holds per graph.
+    this.pipeline.reset();
+    this.deliveredFrames = 0;
+    this.decodedFrames = 0;
     const ctx = new AudioContext({ sampleRate: first.sampleRate, latencyHint: 'interactive' });
     try {
       await ctx.audioWorklet.addModule(playbackWorkletUrl);
@@ -389,7 +403,6 @@ export class LosslessReceiver {
       channels: first.channels,
       bitDepth: first.bitDepth,
     };
-    this.pipeline.reset(); // new stream format: fresh sequence tracking
     void ctx.resume();
     this.stats.set({ active: true, ...this.format, offMainThread: this.codec.offMainThread });
     this.events.emit('stream', dest.stream);

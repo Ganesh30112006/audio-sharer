@@ -119,6 +119,7 @@ export type InterruptionCause =
   | 'network-congestion'
   | 'transport-error'
   | 'decoder-overload'
+  | 'decode-error'
   | 'upstream-gap';
 
 export interface Interruption {

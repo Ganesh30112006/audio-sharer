@@ -8,9 +8,10 @@ import type { Store } from '../utils/store';
 const CAUSE: Record<string, string> = {
   'encoder-overload': 'this device could not encode fast enough',
   'network-congestion': 'the network could not carry the stream fast enough',
-  'transport-error': 'the connection to the audio server failed',
+  'transport-error': 'the connection to the audio server is unavailable',
   'decoder-overload': 'this device could not decode fast enough',
   'upstream-gap': 'audio was missing from the stream',
+  'decode-error': 'a block could not be decoded',
 };
 
 const sec = (frames: number, rate: number) => (rate ? (frames / rate).toFixed(2) : '0');
