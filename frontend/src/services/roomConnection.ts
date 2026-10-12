@@ -300,13 +300,21 @@ export class RoomConnection {
     this.store.set({ publishing: false });
   }
 
+  /**
+   * Sends on the reliable data channel. Resolves only when the SDK accepted
+   * the data; rejects when it can't be sent, so callers never count an unsent
+   * block as delivered. While reconnecting the SDK holds reliable data until
+   * the transport is back (or fails it), so the data is handed over.
+   */
   async sendData(
     payload: Uint8Array<ArrayBuffer>,
     to?: string[],
     topic = SYNC_TOPIC,
   ): Promise<void> {
     const room = this.room;
-    if (!room || this.store.get().state !== 'connected') return;
+    const { state } = this.store.get();
+    if (!room || (state !== 'connected' && state !== 'reconnecting'))
+      throw new Error(`Not connected (${state})`);
     await room.localParticipant.publishData(payload, {
       reliable: true,
       topic,

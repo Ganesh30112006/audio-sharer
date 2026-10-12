@@ -8,6 +8,7 @@ import { peekHeader } from './codec';
 import type { Interruption } from './flowControl';
 import type { SenderTrace } from './latencyTrace';
 import { SendPipeline } from './pipeline';
+import { RenderPauseDetector } from './renderPause';
 
 /** Target block duration. */
 const BLOCK_MS = 10;
@@ -101,6 +102,7 @@ export class LosslessSender {
   /** Generation that was just stopped: its final flushed block is expected, not stale. */
   private lastStoppedGen = 0;
   captureDiag: CaptureDiag | null = null;
+  private readonly pauses = new RenderPauseDetector();
   private static modules = new WeakMap<BaseAudioContext, Promise<void>>();
 
   /**
@@ -113,13 +115,20 @@ export class LosslessSender {
   ) {
     const traced: Send = trace
       ? (payload) => {
-          const seq = peekHeader(payload).seq;
-          trace.sendCall(seq, this.pipeline.sendQ.size);
+          // Tracing must never affect sending: any trace failure is ignored.
+          let seq = -1;
+          try {
+            seq = peekHeader(payload).seq;
+            trace.sendCall(seq, this.pipeline.sendQ.size);
+          } catch {
+            seq = -1;
+          }
           const p = send(payload);
-          p.then(
-            () => trace.sendDone(seq),
-            () => undefined,
-          );
+          if (seq >= 0)
+            p.then(
+              () => trace.sendDone(seq),
+              () => undefined,
+            );
           return p;
         }
       : send;
@@ -193,6 +202,7 @@ export class LosslessSender {
       blockFramesFor(ctx.sampleRate, bitDepth),
     );
     if (gen === null) return; // superseded by a later start()/stop()
+    this.pauses.reset();
     this.format = { sampleRate: ctx.sampleRate, bitDepth, channels: 0 };
     this.last = { t: performance.now(), bytes: 0, raw: 0, busy: 0 };
     this.statsTimer ??= setInterval(() => this.publish(), STATS_INTERVAL_MS);
@@ -225,6 +235,10 @@ export class LosslessSender {
       return;
     }
     this.format.channels = data.channels;
+    // A suspended context (host paused) resumes with contiguous samples; mark
+    // it so listeners restart instead of treating the pause as network delay.
+    if (this.pauses.check(performance.now(), ctx.currentTime * 1000))
+      this.pipeline.markDiscontinuity();
     const before = this.pipeline.log.current;
     const seq = this.pipeline.nextSeq;
     if (this.trace) {

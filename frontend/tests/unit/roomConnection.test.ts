@@ -208,4 +208,25 @@ describe('RoomConnection', () => {
     expect(conn.store.get().participants).toHaveLength(50);
     vi.useRealTimers();
   });
+
+  it('never reports a send as done when nothing was sent', async () => {
+    const conn = new RoomConnection('host');
+    const payload = new Uint8Array([1, 2, 3]);
+    // Not connected yet: the caller must learn the block was not delivered.
+    await expect(conn.sendData(payload)).rejects.toThrow();
+    await conn.connect(grant);
+    const room = rooms[0]!;
+    // While reconnecting the SDK's reliable channel waits for the transport:
+    // hand the data over instead of dropping it.
+    room.emit('reconnecting');
+    await conn.sendData(payload, undefined, 'mc.pcm.v1');
+    expect(room.localParticipant.publishData).toHaveBeenCalledTimes(1);
+    // A failed hand-over is reported, not swallowed.
+    room.localParticipant.publishData.mockRejectedValueOnce(new Error('transport closed'));
+    await expect(conn.sendData(payload)).rejects.toThrow(/transport closed/);
+    // Disconnected: rejected without a send attempt.
+    room.emit('disconnected');
+    await expect(conn.sendData(payload)).rejects.toThrow();
+    expect(room.localParticipant.publishData).toHaveBeenCalledTimes(2);
+  });
 });

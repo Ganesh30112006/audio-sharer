@@ -27,7 +27,16 @@ export function LosslessStats(
   const s = useStoreState<LosslessSenderStats | LosslessReceiverStats>(
     isSender ? props.sender : props.receiver,
   );
-  if (!s.active) return null;
+  const failure = isSender ? null : (s as LosslessReceiverStats).error;
+  if (!s.active)
+    return failure ? (
+      <section className="card" aria-label="Lossless stream">
+        <p className="small row" role="alert" style={{ color: 'var(--warning)' }}>
+          <AlertTriangle size={16} aria-hidden /> Lossless playback could not start: {failure}.
+          Retrying automatically.
+        </p>
+      </section>
+    ) : null;
   const rows: Array<[string, string]> = [
     ['Format', formatLabel(s)],
     ['Lossless data rate', `${s.kbps} kbps`],

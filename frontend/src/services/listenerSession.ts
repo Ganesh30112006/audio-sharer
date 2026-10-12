@@ -73,7 +73,17 @@ export class ListenerSession {
         }
       }),
     );
-    this.disposer.add(settingsStore.subscribe(() => this.applyBufferMode()));
+    // Only a change of buffer mode re-targets playback: re-applying it on every
+    // settings write would reset the adaptive lossless buffer mid-stream.
+    let mode = settingsStore.get().bufferMode;
+    this.disposer.add(
+      settingsStore.subscribe(() => {
+        const next = settingsStore.get().bufferMode;
+        if (next === mode) return;
+        mode = next;
+        this.applyBufferMode();
+      }),
+    );
   }
 
   async loadRoom(): Promise<RoomInfo | null> {

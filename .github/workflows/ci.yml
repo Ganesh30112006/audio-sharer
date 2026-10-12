@@ -65,7 +65,7 @@ jobs:
       - working-directory: frontend
         # Correctness suites. Benchmarks (latency, perf, cpu, hires-throughput) are run
         # manually — see README "Performance measurements".
-        run: npx playwright test e2e/streaming.spec.ts e2e/lossless.spec.ts e2e/harness.spec.ts
+        run: npx playwright test e2e/streaming.spec.ts e2e/lossless.spec.ts e2e/harness.spec.ts e2e/lossless-pause.spec.ts e2e/user-flows.spec.ts
         env:
           LIFECYCLE_SOAK_SECONDS: '8'
       - if: failure()

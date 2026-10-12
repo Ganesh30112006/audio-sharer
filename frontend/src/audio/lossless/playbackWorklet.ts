@@ -186,6 +186,8 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
   private traceSettle(playMs: number): void {
     const p = this.pending!;
     const i = (this.pendHead++ % TRACE_PENDING) * 5;
+    // Bounded even if rendering (and so report()) stops: oldest items go first.
+    if (this.traceOut.length >= TRACE_PENDING * 5 * 4) this.traceOut.splice(0, 5);
     this.traceOut.push(p[i]!, p[i + 2]!, playMs, p[i + 3]!, p[i + 4]!);
   }
 
@@ -213,7 +215,11 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
     const ch = this.channels;
     const frames = Math.floor(pcm.length / ch);
     if (this.writeFrame + frames - this.readFrame > this.cap) {
-      this.readFrame = this.writeFrame + frames - this.cap;
+      // Ring full (e.g. rendering suspended while data keeps arriving): the
+      // oldest frames are discarded, and counted, never lost silently.
+      const keepFrom = this.writeFrame + frames - this.cap;
+      this.skippedFrames += keepFrom - this.readFrame;
+      this.readFrame = keepFrom;
       this.overflows++;
     }
     for (let i = 0; i < frames; i++) {

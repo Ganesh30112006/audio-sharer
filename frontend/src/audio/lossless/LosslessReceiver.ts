@@ -58,6 +58,8 @@ export interface LosslessReceiverStats {
   transitMs: number | null;
   decoderUtilization: number;
   offMainThread: boolean;
+  /** Why playback can't start (e.g. the playback worklet failed to load); null when fine. */
+  error: string | null;
 }
 
 /**
@@ -67,6 +69,10 @@ export interface LosslessReceiverStats {
 export const LOSSLESS_TARGET_MS = { auto: 40, stable: 300 } as const;
 export const LOSSLESS_MIN_TARGET_MS = 20;
 const STATS_INTERVAL_MS = 500;
+/** After a failed playback-graph build, wait this long before trying again. */
+const BUILD_RETRY_MS = 2000;
+/** Packets held while the playback graph is being built. */
+const MAX_PENDING = 100;
 
 interface Format {
   sampleRate: number;
@@ -109,6 +115,7 @@ const idle = (): LosslessReceiverStats => ({
   transitMs: null,
   decoderUtilization: 0,
   offMainThread: false,
+  error: null,
 });
 
 /**
@@ -140,6 +147,9 @@ export class LosslessReceiver {
   private outageTotals = { count: 0, ms: 0, lastRecovery: null as number | null };
   private deliveredFrames = 0;
   private decodedFrames = 0;
+  /** Frames that arrived while no playback graph could take them (counted, never silent). */
+  private unavailableFrames = 0;
+  private buildFailedAt: number | null = null;
 
   /**
    * @param observer optional read-only tap on each decoded block before
@@ -184,11 +194,6 @@ export class LosslessReceiver {
         // corrupt: counted by the pipeline below
       }
     }
-    if (this.building) {
-      // Bounded while the playback graph is (re)built for a new format.
-      if (this.pending.length < 100) this.pending.push(payload.slice());
-      return;
-    }
     let meta;
     try {
       meta = peekHeader(payload);
@@ -196,7 +201,22 @@ export class LosslessReceiver {
       this.pipeline.receive(payload); // counts it as corrupt
       return;
     }
+    if (this.building) {
+      // Bounded while the playback graph is (re)built for a new format.
+      if (this.pending.length < MAX_PENDING) this.pending.push(payload.slice());
+      else this.unavailableFrames += meta.frames;
+      return;
+    }
     const f = this.format;
+    if (
+      !f &&
+      this.buildFailedAt !== null &&
+      performance.now() - this.buildFailedAt < BUILD_RETRY_MS
+    ) {
+      // The last build failed: back off instead of retrying on every packet.
+      this.unavailableFrames += meta.frames;
+      return;
+    }
     if (
       !f ||
       f.sampleRate !== meta.sampleRate ||
@@ -204,12 +224,32 @@ export class LosslessReceiver {
       f.bitDepth !== meta.bitDepth
     ) {
       this.pending.push(payload.slice());
-      this.building = this.build(meta).finally(() => {
-        this.building = null;
-        const queued = this.pending;
-        this.pending = [];
-        queued.forEach((p) => this.push(p));
-      });
+      this.building = this.build(meta)
+        .then(
+          () => {
+            this.buildFailedAt = null;
+            this.stats.set({ error: null });
+          },
+          (err: unknown) => {
+            this.buildFailedAt = performance.now();
+            this.stats.set({ active: false, error: (err as Error)?.message ?? String(err) });
+          },
+        )
+        .finally(() => {
+          this.building = null;
+          const queued = this.pending;
+          this.pending = [];
+          if (this.buildFailedAt === null) queued.forEach((p) => this.push(p));
+          else
+            for (const p of queued) {
+              try {
+                this.unavailableFrames += peekHeader(p).frames;
+              } catch {
+                // corrupt payloads were never playable
+              }
+            }
+          this.publish();
+        });
       return;
     }
     const accepted = this.pipeline.receive(payload);
@@ -300,7 +340,7 @@ export class LosslessReceiver {
       stale: s.stale,
       corrupt: s.corrupt,
       interruptions: s.interruptions,
-      droppedFrames: s.droppedFrames,
+      droppedFrames: s.droppedFrames + this.unavailableFrames,
       decodeQueueBlocks: s.decodeQueue.blocks,
       peakDecodeQueueBlocks: s.peakDecodeBlocks,
       transitMs: s.lastTransitMs,
@@ -311,7 +351,12 @@ export class LosslessReceiver {
   private async build(first: Format): Promise<void> {
     this.teardown();
     const ctx = new AudioContext({ sampleRate: first.sampleRate, latencyHint: 'interactive' });
-    await ctx.audioWorklet.addModule(playbackWorkletUrl);
+    try {
+      await ctx.audioWorklet.addModule(playbackWorkletUrl);
+    } catch (err) {
+      void ctx.close().catch(() => undefined);
+      throw err;
+    }
     if (this.disposed) {
       void ctx.close();
       return;

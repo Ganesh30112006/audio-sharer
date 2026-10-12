@@ -71,7 +71,13 @@ What "lossless" guarantees, and what it doesn't:
 - Every frame that is delivered is bit-exact. When continuity can't be kept
   (overload, network stall, restart), the stream reports an **explicit
   interruption** and playback restarts cleanly. Audio is never silently
-  dropped, and playback never splices across a gap.
+  dropped, and playback never splices across a gap. This includes the
+  network path: a block the data channel can't take is reported as a
+  transport interruption, never counted as sent.
+- When the host pauses, its audio graph is suspended after 1.5 s. The first
+  block after resuming is marked as a discontinuity, so listeners restart
+  cleanly instead of reading the pause as network delay (which would inflate
+  their buffer by the pause length).
 - The playback buffer adapts to the connection (auto mode) using a hybrid of
   three models: a short-term one (the spread of block arrival times over the
   last ~10 s, measured on the audio thread), a long-term one (a decaying
@@ -169,12 +175,13 @@ same origin; the Vite dev server proxies `/api`.
 
 ```bash
 cd backend && pytest -q && ruff check . && ruff format --check .
-cd frontend && npm run lint && npm run typecheck && npm test   # 126 unit tests
+cd frontend && npm run lint && npm run typecheck && npm test   # 142 unit tests
 cd frontend && npm run bench:codec                                # codec benchmark → bench/results/*.json
 
 # Browser tests need a LiveKit server (dev keys):
 livekit-server --config deploy/livekit.dev.yaml &
-cd frontend && npx playwright test e2e/streaming.spec.ts e2e/lossless.spec.ts e2e/harness.spec.ts
+cd frontend && npx playwright test e2e/streaming.spec.ts e2e/lossless.spec.ts e2e/harness.spec.ts \
+  e2e/lossless-pause.spec.ts e2e/user-flows.spec.ts
 ```
 
 Main suites:
@@ -188,6 +195,9 @@ Main suites:
 | `e2e/streaming`                                                     | Real LiveKit: audible Opus delivery, join/leave leaks, duplicate-host takeover, Studio reaches 510 kbps                             |
 | `e2e/lossless`                                                      | Real LiveKit: bit-exact delivery at 44.1/16, 96/24 and 192/24                                                                       |
 | `e2e/harness`                                                       | Real worker and worklets with a controllable link: stall, slow link, restarts, reordering, lifecycle soak                           |
+| `e2e/lossless-pause`                                                | Host pause and resume: the listener's buffer comes back at its normal size, no unannounced gaps                                     |
+| `e2e/user-flows`                                                    | Track change across formats (44.1/16 → 48/24) and live lossless → Opus → lossless switches, with zero page errors                   |
+| `tests/unit/playbackWorklet`, `codecClient`, `losslessReceiver`     | The real playback worklet's frame accounting (incl. ring overflow); codec worker crash recovery; failed playback-graph builds       |
 | `e2e/latency`, `latency-profile`, `perf`, `cpu`, `hires-throughput` | Benchmarks, run manually (not in CI); `scripts/latency-trials.sh` interleaves latency-profile trials                                |
 
 ---

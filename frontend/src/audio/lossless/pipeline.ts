@@ -116,6 +116,14 @@ export class SendPipeline {
     return this.gen;
   }
 
+  /**
+   * The next admitted block starts a new playback timeline (the source was
+   * paused): listeners restart cleanly instead of reading the pause as delay.
+   */
+  markDiscontinuity(): void {
+    this.discontinuityNext = true;
+  }
+
   /** Sequence number the next captured block will get (latency trace). */
   get nextSeq(): number {
     return this.seq;
