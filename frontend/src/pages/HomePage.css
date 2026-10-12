@@ -1,0 +1,27 @@
+.home .hero {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 640px;
+  padding: var(--space-4) 0;
+}
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+.home-grid h2 {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.code-input {
+  font-size: 1.3rem !important;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+@media (max-width: 720px) {
+  .home-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

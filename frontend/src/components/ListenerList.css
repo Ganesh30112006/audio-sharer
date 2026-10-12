@@ -1,0 +1,37 @@
+.listeners {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.listeners li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 4px;
+}
+.listener-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quality-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--text-muted);
+}
+.q-excellent,
+.q-good {
+  background: var(--success);
+}
+.q-poor {
+  background: var(--warning);
+}
+.q-lost {
+  background: var(--danger);
+}

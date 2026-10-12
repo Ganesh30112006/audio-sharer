@@ -1,0 +1,46 @@
+.queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.queue li {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+.queue li.current {
+  background: var(--accent-soft);
+}
+.queue-item {
+  font: inherit;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  text-align: left;
+  padding: 8px 10px;
+  background: none;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  min-height: 40px;
+  align-items: center;
+}
+.queue-item:hover {
+  background: var(--surface-2);
+}
+.queue-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queue li.current .queue-title {
+  font-weight: 650;
+  color: var(--accent);
+}

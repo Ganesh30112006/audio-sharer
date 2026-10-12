@@ -1,0 +1,15 @@
+.progress {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+.progress-time {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  min-width: 3.5em;
+  text-align: center;
+}
+.progress-range:disabled {
+  opacity: 0.6;
+}
