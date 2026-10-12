@@ -238,6 +238,33 @@ repeated.
 
 ---
 
+### Lossless latency: what was tried
+
+The lossless median (~53 ms here) is mostly the adaptive playback buffer
+(~45 ms), and that buffer covers arrival jitter that does not come from the
+network. Transit in this container is 1–2 ms. Arrivals still spread by about
+13 ms, because the host's audio thread renders in bursts, and by 50–70 ms
+every 20–60 s when the host or listener page stalls (host and listener
+pages, LiveKit and the servers share four cores, without real-time audio
+priority). The best single
+samples are 10–15 ms, which shows how fast the pipeline is when nothing stalls.
+
+Changes measured against the shipped setup (120 s runs, `LATENCY_SECONDS=120`,
+interleaved A/B; run-to-run spread is about ±10 ms, so each was run several
+times):
+
+| Experiment                                                      | Result                                                                  | Kept? |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------- | ----- |
+| Adaptive buffer instead of fixed 120 ms; 10 ms blocks           | median 116 → 53 ms, 0 outages                                           | yes   |
+| 5 ms blocks                                                     | 2× the messages per second; more stalls (2 outages, 97 ms stall memory) | no    |
+| Decode in the playback worklet (no worker, one main hop fewer)  | medians 61 / 68 / 71 ms vs 58 / 60 ms; no gain                          | no    |
+| Tighter drift window and safety margin                          | 1–3 outages per 120 s on this machine                                   | no    |
+| Play the worklet's context directly to the device (`setSinkId`) | its output burstier here; more jitter and outages in headless Chromium  | no    |
+
+On a machine with real-time audio threads (a normal desktop), the measured
+jitter is smaller and the adaptive buffer settles lower on its own (floor
+20 ms), with no setting to change.
+
 ## Bandwidth and cost model
 
 The SFU forwards one copy per listener, so **host upload stays constant** while

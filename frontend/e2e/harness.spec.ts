@@ -55,8 +55,9 @@ function gates(r: Result, opts: { accounting?: boolean; ordered?: boolean } = {}
   }
   expect(R.duplicates).toBe(0);
   expect(R.corrupt).toBe(0);
-  expect(r.peak.sendBlocks, 'bounded encode/send queues').toBeLessThanOrEqual(51);
-  expect(r.peak.decodeBlocks, 'bounded decode queue').toBeLessThanOrEqual(51);
+  // Limits: DEFAULT_SEND_LIMITS / DEFAULT_RECEIVE_LIMITS (100 blocks, ~1 s of 10 ms blocks).
+  expect(r.peak.sendBlocks, 'bounded encode/send queues').toBeLessThanOrEqual(100);
+  expect(r.peak.decodeBlocks, 'bounded decode queue').toBeLessThanOrEqual(101);
   expect(r.peak.oldestAgeMs, 'queue age bounded while streaming').toBeLessThanOrEqual(800);
   if (opts.accounting !== false) {
     // Stage-by-stage reconciliation (after drain). Interrupted frames are never counted as delivered.

@@ -19,14 +19,17 @@ import {
   type QueueSnapshot,
 } from './flowControl';
 
-/** ~1 s of audio, 2 MB, 750 ms age: bounded latency before declaring an interruption. */
+/**
+ * ~1 s of 10 ms blocks, 2 MB, 750 ms age: bounded latency before declaring an
+ * interruption. The age limit is the one that normally trips first.
+ */
 export const DEFAULT_SEND_LIMITS = {
-  encode: { maxBlocks: 50, maxBytes: 2 * 1024 * 1024, maxAgeMs: 750, resumeFraction: 0.25 },
-  send: { maxBlocks: 50, maxBytes: 2 * 1024 * 1024, maxAgeMs: 750, resumeFraction: 0.25 },
+  encode: { maxBlocks: 100, maxBytes: 2 * 1024 * 1024, maxAgeMs: 750, resumeFraction: 0.25 },
+  send: { maxBlocks: 100, maxBytes: 2 * 1024 * 1024, maxAgeMs: 750, resumeFraction: 0.25 },
 } satisfies Record<string, QueueLimits>;
 
 export const DEFAULT_RECEIVE_LIMITS: QueueLimits = {
-  maxBlocks: 50,
+  maxBlocks: 100,
   maxBytes: 2 * 1024 * 1024,
   maxAgeMs: 750,
   resumeFraction: 0.25,
@@ -159,7 +162,11 @@ export class SendPipeline {
       }
     }
     const enc = this.encodeQ.overLimit();
-    const net = this.sendQ.overLimit();
+    // Everything being encoded is headed for the send queue: count it there
+    // too, so the send queue's block limit is a hard bound.
+    const net =
+      this.sendQ.overLimit() ??
+      (this.sendQ.size + this.encodeQ.size >= this.sendQ.limits.maxBlocks ? 'blocks' : null);
     if (enc || net) {
       const cause = enc ? 'encoder-overload' : 'network-congestion';
       this.log.begin(cause, enc ?? net);

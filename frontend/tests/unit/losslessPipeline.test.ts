@@ -233,7 +233,7 @@ function checkInvariants(
   expect(r.unexpectedGaps, 'gaps must be announced').toBe(0);
   const L = DEFAULT_SEND_LIMITS;
   expect(res.peaks.enc).toBeLessThanOrEqual(L.encode.maxBlocks + 1);
-  expect(res.peaks.send).toBeLessThanOrEqual(L.send.maxBlocks + 1);
+  expect(res.peaks.send, 'send queue limit is a hard bound').toBeLessThanOrEqual(L.send.maxBlocks);
   expect(res.peaks.sendBytes).toBeLessThanOrEqual(L.send.maxBytes + 16 * 1024);
   expect(res.peaks.dec).toBeLessThanOrEqual(DEFAULT_RECEIVE_LIMITS.maxBlocks + 1);
   expect(res.peaks.age).toBeLessThanOrEqual(L.send.maxAgeMs + 2 * BLOCK_MS);
