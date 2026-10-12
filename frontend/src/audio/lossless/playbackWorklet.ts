@@ -30,6 +30,12 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
   private clockCorrections = 0;
   private resyncs = 0;
   private overflows = 0;
+  /** Frames output from stream data / silence output after first start / frames skipped or repeated. */
+  private playedFrames = 0;
+  private silenceFrames = 0;
+  private skippedFrames = 0;
+  private repeatedFrames = 0;
+  private started = false;
   private lastReport = 0;
 
   constructor(options: AudioWorkletNodeOptions) {
@@ -47,7 +53,10 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
       else if (msg.type === 'target' && msg.targetMs !== undefined) {
         this.target = Math.round((msg.targetMs / 1000) * sampleRate);
       } else if (msg.type === 'reset') {
+        // Discontinuity: never splice across a gap; flush and re-buffer.
+        this.skippedFrames += this.writeFrame - this.readFrame;
         this.readFrame = this.writeFrame = 0;
+        if (this.playing) this.port.postMessage({ type: 'state', playing: false, reset: true });
         this.playing = false;
       }
     };
@@ -72,23 +81,31 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
     const n = out[0]!.length;
     let level = this.writeFrame - this.readFrame;
 
-    if (!this.playing && level >= this.target) this.playing = true;
+    if (!this.playing && level >= this.target) {
+      this.playing = true;
+      this.started = true;
+      this.port.postMessage({ type: 'state', playing: true });
+    }
     if (this.playing && level < n) {
       this.playing = false;
       this.underruns++;
+      this.port.postMessage({ type: 'state', playing: false });
     }
     if (!this.playing) {
       for (const o of out) o.fill(0);
+      if (this.started) this.silenceFrames += n;
       this.report(level);
       return true;
     }
 
     if (level > this.max) {
+      this.skippedFrames += level - this.target;
       this.readFrame = this.writeFrame - this.target;
       this.resyncs++;
       level = this.target;
     } else if (level > this.target + this.window) {
       this.readFrame++; // drop one frame
+      this.skippedFrames++;
       this.clockCorrections++;
     }
     const repeat = level < this.target - this.window && level > n;
@@ -99,7 +116,11 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
     }
     // Repeat one frame by advancing one less.
     this.readFrame += repeat ? n - 1 : n;
-    if (repeat) this.clockCorrections++;
+    this.playedFrames += repeat ? n - 1 : n;
+    if (repeat) {
+      this.clockCorrections++;
+      this.repeatedFrames++;
+    }
     this.report(this.writeFrame - this.readFrame);
     return true;
   }
@@ -108,11 +129,17 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
     if (currentTime - this.lastReport < 0.5) return;
     this.lastReport = currentTime;
     this.port.postMessage({
+      type: 'stats',
       bufferMs: (level / sampleRate) * 1000,
+      bufferedFrames: level,
       underruns: this.underruns,
       clockCorrections: this.clockCorrections,
       resyncs: this.resyncs,
       overflows: this.overflows,
+      playedFrames: this.playedFrames,
+      silenceFrames: this.silenceFrames,
+      skippedFrames: this.skippedFrames,
+      repeatedFrames: this.repeatedFrames,
       playing: this.playing,
     });
   }

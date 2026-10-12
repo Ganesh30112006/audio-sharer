@@ -52,8 +52,9 @@ export class HostSession {
   readonly clock = new ServerClock(api.serverTime);
   readonly sync: SyncPublisher;
   readonly store: Store<HostState>;
-  readonly lossless = new LosslessSender((payload) =>
-    this.conn.sendData(payload, undefined, PCM_TOPIC),
+  readonly lossless = new LosslessSender(
+    (payload) => this.conn.sendData(payload, undefined, PCM_TOPIC),
+    () => this.clock.now(),
   );
   private capture: OwnedCapture | null = null;
   /** Web Audio graph feeding a capture track to the lossless sender. */
@@ -382,7 +383,7 @@ export class HostSession {
     if (this.disposed) return;
     this.disposed = true;
     this.disposer.dispose();
-    this.lossless.stop();
+    this.lossless.dispose();
     this.releaseCapture();
     await this.conn.disconnect();
     this.player.dispose();

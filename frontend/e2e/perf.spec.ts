@@ -50,8 +50,10 @@ async function gcAndSample(cdp: CDPSession) {
   };
 }
 
-const metric = async (page: Page, k: string) =>
-  ((await page.locator(`[data-metric="${k}"] dd`).textContent()) ?? '').trim();
+const metric = async (page: Page, k: string) => {
+  const el = page.locator(`[data-metric="${k}"] dd`);
+  return (await el.count()) ? ((await el.textContent()) ?? '').trim() : '';
+};
 
 async function hostWithQueue(
   browser: Browser,
@@ -105,7 +107,12 @@ test('host cost stays flat as listeners join (SFU fan-out)', async ({ browser })
     const wall = (Date.now() - t0) / 1000;
     rows.push({
       listeners: target,
-      hostUplinkKbps: Number.parseFloat(await metric(host.page, 'Bitrate')),
+      hostUplinkKbps: Number.parseFloat(
+        await metric(
+          host.page,
+          TRANSPORT === 'lossless' ? 'lossless Lossless data rate' : 'Bitrate',
+        ),
+      ),
       hostMainThreadBusyPct: +(((after.TaskDuration! - before.TaskDuration!) / wall) * 100).toFixed(
         2,
       ),
@@ -116,7 +123,7 @@ test('host cost stays flat as listeners join (SFU fan-out)', async ({ browser })
       hostHeapMB: +(after.JSHeapUsedSize! / 2 ** 20).toFixed(1),
     });
   }
-  console.log(`[perf] scaling ${JSON.stringify(rows)}`);
+  console.log(`[perf] scaling (${TRANSPORT}) ${JSON.stringify(rows)}`);
   test.info().annotations.push({ type: 'scaling', description: JSON.stringify(rows) });
 
   // One upstream regardless of audience size: uplink must not grow with listeners.
@@ -154,6 +161,11 @@ test(`soak: ${SOAK_MINUTES} min of playback with track changes stays bounded`, a
       concealmentEvents:
         Number.parseInt(await metric(listener.page, 'Concealment events'), 10) || 0,
       reconnects: Number.parseInt(await metric(listener.page, 'Reconnects'), 10) || 0,
+      losslessUnderruns:
+        Number.parseInt(await metric(listener.page, 'lossless Underruns'), 10) || 0,
+      losslessResyncs: Number.parseInt(await metric(listener.page, 'lossless Resyncs'), 10) || 0,
+      losslessClockCorrections:
+        Number.parseInt(await metric(listener.page, 'lossless Clock corrections'), 10) || 0,
     });
     await host.page.waitForTimeout(Math.min(sampleEveryMs, Math.max(0, end - Date.now())));
   }
@@ -167,8 +179,12 @@ test(`soak: ${SOAK_MINUTES} min of playback with track changes stays bounded`, a
     hostListenersDelta: last.hostListeners! - first.hostListeners!,
     listenerListenersDelta: last.listenerListeners! - first.listenerListeners!,
     hostNodesDelta: last.hostNodes! - first.hostNodes!,
+    transport: TRANSPORT,
     concealmentEvents: last.concealmentEvents,
     reconnects: last.reconnects,
+    losslessUnderruns: last.losslessUnderruns,
+    losslessResyncs: last.losslessResyncs,
+    losslessClockCorrections: last.losslessClockCorrections,
   };
   console.log(`[perf] soak-samples ${JSON.stringify(samples)}`);
   console.log(`[perf] soak ${JSON.stringify(summary)}`);

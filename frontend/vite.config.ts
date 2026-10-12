@@ -21,6 +21,10 @@ export default defineConfig({
     // so it lands in its own ~140 KB (gzip) chunk outside the initial shell.
     // The initial-shell budget is enforced by scripts/bundle-report.mjs.
     chunkSizeWarningLimit: 600,
+    // The lossless integration harness is only built for browser tests (E2E_HARNESS=1).
+    rolldownOptions: process.env.E2E_HARNESS
+      ? { input: { main: 'index.html', harness: 'harness/lossless.html' } }
+      : undefined,
   },
   test: {
     environment: 'jsdom',

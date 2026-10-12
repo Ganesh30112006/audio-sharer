@@ -110,3 +110,60 @@ describe('block sizing', () => {
     }
   });
 });
+
+describe('header v2', () => {
+  it('carries continuity metadata', async () => {
+    const { peekHeader } = await import('../../src/audio/lossless/codec');
+    const b = { ...block(64, 2, 16, music(16)), firstFrame: 4_294_967_000, captureMs: 123_456, discontinuity: true };
+    const enc = encodeBlock(b);
+    expect(peekHeader(enc)).toMatchObject({ seq: 7, firstFrame: 4_294_967_000, captureMs: 123_456, discontinuity: true, frames: 64 });
+    expect(peekHeader(encodeBlock(block(64, 2, 16, music(16)))).discontinuity).toBe(false);
+    const old = enc.slice();
+    old[2] = 1;
+    expect(() => decodeBlock(old)).toThrow(CodecError);
+  });
+});
+
+describe('protocol validation', () => {
+  const good = () => encodeBlock({ ...block(256, 2, 16, music(16)) });
+  it('rejects unknown flags, invalid flag combinations and length mismatches', () => {
+    const unknown = good();
+    unknown[3] = unknown[3]! | 0x80;
+    expect(() => decodeBlock(unknown)).toThrow(/Unknown flags/);
+    const both = good();
+    both[3] = 0b011;
+    expect(() => decodeBlock(both)).toThrow(CodecError);
+    const trailing = new Uint8Array(good().length + 2);
+    trailing.set(good());
+    expect(() => decodeBlock(trailing)).toThrow(/Trailing/);
+    const noise = encodeBlock(block(256, 2, 16, () => rand() * 32767)); // verbatim
+    expect(() => decodeBlock(noise.slice(0, noise.length - 1))).toThrow(CodecError);
+    const longer = new Uint8Array(noise.length + 1);
+    longer.set(noise);
+    expect(() => decodeBlock(longer)).toThrow(CodecError);
+  });
+  it('rejects out-of-range header fields', () => {
+    for (const [offset, value] of [
+      [12, 9], // channels
+      [13, 25], // bit depth
+      [14, 0], // frames (low byte) -> 0 frames
+    ] as const) {
+      const b = good();
+      b[offset] = value;
+      if (offset === 14) b[15] = 0;
+      expect(() => decodeBlock(b)).toThrow(CodecError);
+    }
+  });
+  it('survives random garbage without hanging or throwing non-codec errors', () => {
+    for (let i = 0; i < 2000; i++) {
+      const g = good();
+      const n = 1 + Math.floor(rand() * 4 + 4);
+      for (let j = 0; j < n; j++) g[24 + Math.floor(((rand() + 1) / 2) * (g.length - 24))] = Math.floor(((rand() + 1) / 2) * 256);
+      try {
+        decodeBlock(g);
+      } catch (e) {
+        expect(e).toBeInstanceOf(CodecError);
+      }
+    }
+  });
+});

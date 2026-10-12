@@ -36,7 +36,7 @@ export class ListenerSession {
     hasAudio: false,
     error: null,
   });
-  readonly lossless = new LosslessReceiver();
+  readonly lossless = new LosslessReceiver(() => this.clock.now());
   private disposer = new Disposer();
   private disposed = false;
   private remoteStream: MediaStream | null = null;

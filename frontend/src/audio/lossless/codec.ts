@@ -7,15 +7,18 @@
  * that were encoded; when prediction doesn't help (e.g. white noise) a block
  * is stored verbatim, so output is never larger than raw PCM plus a header.
  *
- * Block layout (little-endian header, 16 bytes, then an MSB-first bitstream):
+ * Block layout (little-endian header, 24 bytes, then an MSB-first bitstream):
  *   0  'M' 'L'          magic
- *   2  u8   version (1)
- *   3  u8   flags       bit0 = mid/side, bit1 = verbatim
- *   4  u32  seq         sender block counter (gap detection)
+ *   2  u8   version (2)
+ *   3  u8   flags       bit0 = mid/side, bit1 = verbatim,
+ *                       bit2 = discontinuity (first block after an interruption)
+ *   4  u32  seq         sender block counter (gap / duplicate / reorder detection)
  *   8  u32  sampleRate
  *   12 u8   channels    1..8
  *   13 u8   bitDepth    8..24
  *   14 u16  frames      1..8192
+ *   16 u32  firstFrame  stream sample index of this block's first frame (mod 2^32)
+ *   20 u32  captureMs   sender capture time on the shared server clock (ms mod 2^32)
  * Per (decorrelated) channel: order u3 (7 = constant channel: one stored
  * value, used for digital silence), rice k u5, `order` warm-up samples as
  * signed (bitDepth + side?1:0)-bit values, then frames-order residuals
@@ -28,12 +31,31 @@ export interface PcmBlock {
   bitDepth: number;
   /** Interleaved integer samples, frames * channels long. */
   samples: Int32Array;
+  /** Stream sample index of the first frame (mod 2^32); 0 if unused. */
+  firstFrame?: number;
+  /** Capture time on the shared server clock, ms (mod 2^32); 0 if unused. */
+  captureMs?: number;
+  /** First block after an interruption: receivers must not treat the gap as loss. */
+  discontinuity?: boolean;
 }
 
-export const HEADER_BYTES = 16;
-const VERSION = 1;
+export interface BlockHeader {
+  seq: number;
+  sampleRate: number;
+  channels: number;
+  bitDepth: number;
+  frames: number;
+  firstFrame: number;
+  captureMs: number;
+  discontinuity: boolean;
+}
+
+export const HEADER_BYTES = 24;
+const VERSION = 2;
 const FLAG_MID_SIDE = 1;
 const FLAG_VERBATIM = 2;
+const FLAG_DISCONTINUITY = 4;
+const KNOWN_FLAGS = FLAG_MID_SIDE | FLAG_VERBATIM | FLAG_DISCONTINUITY;
 const MAX_ORDER = 4;
 /** Channel header order value meaning "every sample equals one stored value". */
 const CONSTANT = 7;
@@ -49,26 +71,31 @@ export class CodecError extends Error {
 class BitWriter {
   private buf: Uint8Array;
   private pos = 0; // bytes written
-  private acc = 0; // pending bits (< 8 after flushing)
+  private acc = 0; // pending bits (< 8 between writes)
   private accBits = 0;
 
-  constructor(capacity: number) {
-    this.buf = new Uint8Array(Math.max(64, capacity));
+  /** Writes into `buf` starting at byte `start` (grows by copying only if a size estimate was wrong). */
+  constructor(buf: Uint8Array, start: number) {
+    this.buf = buf;
+    this.pos = start;
   }
 
-  private ensure(extra: number): void {
-    if (this.pos + extra <= this.buf.length) return;
-    const next = new Uint8Array(Math.max(this.buf.length * 2, this.pos + extra));
+  get buffer(): Uint8Array {
+    return this.buf;
+  }
+
+  private grow(): void {
+    const next = new Uint8Array(Math.max(64, this.buf.length * 2));
     next.set(this.buf.subarray(0, this.pos));
     this.buf = next;
   }
 
-  /** Writes the low `n` bits of `value` (n <= 24). */
+  /** Writes the low `n` bits of `value` (1 <= n <= 24). */
   write(value: number, n: number): void {
-    if (n === 0) return;
-    this.acc = (this.acc * 2 ** n + (value & (2 ** n - 1))) >>> 0;
+    this.acc = ((this.acc << n) | (value & ((1 << n) - 1))) >>> 0;
     this.accBits += n;
-    this.ensure(4);
+    // Grow only if the bytes about to be flushed don't fit (never for exactly-sized buffers).
+    if (this.pos + (this.accBits >> 3) > this.buf.length) this.grow();
     while (this.accBits >= 8) {
       this.accBits -= 8;
       this.buf[this.pos++] = (this.acc >>> this.accBits) & 0xff;
@@ -77,70 +104,78 @@ class BitWriter {
   }
 
   writeLarge(value: number, n: number): void {
+    if (n === 0) return;
     if (n > 24) {
-      this.write(Math.floor(value / 2 ** 24), n - 24);
-      this.write(value % 2 ** 24, 24);
+      this.write(Math.floor(value / 0x1000000), n - 24);
+      this.write(value & 0xffffff, 24);
     } else {
       this.write(value, n);
     }
   }
 
-  writeUnary(q: number): void {
-    // q zeros followed by a one
-    while (q >= 24) {
-      this.write(0, 24);
-      q -= 24;
+  /** Rice code: unary quotient (zeros then a one) followed by k remainder bits. */
+  writeRice(u: number, k: number): void {
+    const q = k >= 31 ? 0 : u >>> k;
+    if (q + 1 + k <= 24) {
+      // Common case: one write for quotient terminator + remainder.
+      this.write((1 << k) | (u & ((1 << k) - 1)), q + 1 + k);
+      return;
     }
-    this.write(1, q + 1);
+    let z = q;
+    while (z >= 24) {
+      this.write(0, 24);
+      z -= 24;
+    }
+    this.write(1, z + 1);
+    this.writeLarge(u - q * 2 ** k, k);
   }
 
-  finish(): Uint8Array {
+  /** Flushes pending bits; returns the total number of bytes used in the buffer. */
+  finish(): number {
     if (this.accBits > 0) {
-      this.ensure(1);
+      if (this.pos + 1 > this.buf.length) this.grow();
       this.buf[this.pos++] = (this.acc << (8 - this.accBits)) & 0xff;
       this.acc = 0;
       this.accBits = 0;
     }
-    return this.buf.subarray(0, this.pos);
+    return this.pos;
   }
 }
 
 class BitReader {
-  private bytePos: number;
-  private bitPos = 0; // bits consumed in current byte
+  private bits = 0; // unread bits, right-aligned, `count` of them
+  private count = 0;
+  private pos: number;
+  private readonly len: number;
 
   constructor(
     private readonly buf: Uint8Array,
     start: number,
   ) {
-    this.bytePos = start;
+    this.pos = start;
+    this.len = buf.length;
   }
 
-  readBit(): number {
-    if (this.bytePos >= this.buf.length) throw new CodecError('Truncated block');
-    const bit = (this.buf[this.bytePos]! >>> (7 - this.bitPos)) & 1;
-    if (++this.bitPos === 8) {
-      this.bitPos = 0;
-      this.bytePos++;
+  private refill(): void {
+    while (this.count <= 24 && this.pos < this.len) {
+      this.bits = ((this.bits << 8) | this.buf[this.pos++]!) >>> 0;
+      this.count += 8;
     }
-    return bit;
   }
 
+  private keep(): void {
+    this.bits = this.count === 0 ? 0 : (this.bits & (0xffffffff >>> (32 - this.count))) >>> 0;
+  }
+
+  /** Reads n bits (n <= 30). */
   read(n: number): number {
-    let v = 0;
-    while (n > 0) {
-      if (this.bytePos >= this.buf.length) throw new CodecError('Truncated block');
-      const avail = 8 - this.bitPos;
-      const take = Math.min(avail, n);
-      const bits = (this.buf[this.bytePos]! >>> (avail - take)) & ((1 << take) - 1);
-      v = v * 2 ** take + bits;
-      n -= take;
-      this.bitPos += take;
-      if (this.bitPos === 8) {
-        this.bitPos = 0;
-        this.bytePos++;
-      }
-    }
+    if (n === 0) return 0;
+    if (n > 24) return this.read(n - 24) * 0x1000000 + this.read(24);
+    if (this.count < n) this.refill();
+    if (this.count < n) throw new CodecError('Truncated block');
+    this.count -= n;
+    const v = (this.bits >>> this.count) & ((1 << n) - 1);
+    this.keep();
     return v;
   }
 
@@ -149,12 +184,31 @@ class BitReader {
     return v >= 2 ** (n - 1) ? v - 2 ** n : v;
   }
 
+  /** True if every remaining bit is padding (< 8 zero bits) — i.e. the block was consumed exactly. */
+  atEnd(): boolean {
+    return this.pos === this.len && this.count < 8 && this.bits === 0;
+  }
+
   readUnary(limit: number): number {
     let q = 0;
-    while (this.readBit() === 0) {
-      if (++q > limit) throw new CodecError('Corrupt residual');
+    for (;;) {
+      if (this.count === 0) this.refill();
+      if (this.count === 0) throw new CodecError('Truncated block');
+      const window = (this.bits << (32 - this.count)) >>> 0;
+      if (window === 0) {
+        q += this.count;
+        this.count = 0;
+        this.bits = 0;
+        if (q > limit) throw new CodecError('Corrupt residual');
+        continue;
+      }
+      const lz = Math.clz32(window);
+      q += lz;
+      this.count -= lz + 1;
+      this.keep();
+      if (q > limit) throw new CodecError('Corrupt residual');
+      return q;
     }
-    return q;
   }
 }
 
@@ -162,50 +216,49 @@ class BitReader {
 
 function residuals(x: Int32Array, order: number, out: Int32Array): void {
   const n = x.length;
-  for (let i = order; i < n; i++) {
-    let e: number;
-    switch (order) {
-      case 0:
-        e = x[i]!;
-        break;
-      case 1:
-        e = x[i]! - x[i - 1]!;
-        break;
-      case 2:
-        e = x[i]! - 2 * x[i - 1]! + x[i - 2]!;
-        break;
-      case 3:
-        e = x[i]! - 3 * x[i - 1]! + 3 * x[i - 2]! - x[i - 3]!;
-        break;
-      default:
-        e = x[i]! - 4 * x[i - 1]! + 6 * x[i - 2]! - 4 * x[i - 3]! + x[i - 4]!;
-    }
-    out[i] = e;
+  switch (order) {
+    case 0:
+      for (let i = 0; i < n; i++) out[i] = x[i]!;
+      break;
+    case 1:
+      for (let i = 1; i < n; i++) out[i] = x[i]! - x[i - 1]!;
+      break;
+    case 2:
+      for (let i = 2; i < n; i++) out[i] = x[i]! - 2 * x[i - 1]! + x[i - 2]!;
+      break;
+    case 3:
+      for (let i = 3; i < n; i++) out[i] = x[i]! - 3 * x[i - 1]! + 3 * x[i - 2]! - x[i - 3]!;
+      break;
+    default:
+      for (let i = 4; i < n; i++)
+        out[i] = x[i]! - 4 * x[i - 1]! + 6 * x[i - 2]! - 4 * x[i - 3]! + x[i - 4]!;
   }
 }
 
 function restore(x: Int32Array, order: number): void {
-  for (let i = order; i < x.length; i++) {
-    switch (order) {
-      case 0:
-        break;
-      case 1:
-        x[i] = x[i]! + x[i - 1]!;
-        break;
-      case 2:
-        x[i] = x[i]! + 2 * x[i - 1]! - x[i - 2]!;
-        break;
-      case 3:
-        x[i] = x[i]! + 3 * x[i - 1]! - 3 * x[i - 2]! + x[i - 3]!;
-        break;
-      default:
+  const n = x.length;
+  switch (order) {
+    case 0:
+      break;
+    case 1:
+      for (let i = 1; i < n; i++) x[i] = x[i]! + x[i - 1]!;
+      break;
+    case 2:
+      for (let i = 2; i < n; i++) x[i] = x[i]! + 2 * x[i - 1]! - x[i - 2]!;
+      break;
+    case 3:
+      for (let i = 3; i < n; i++) x[i] = x[i]! + 3 * x[i - 1]! - 3 * x[i - 2]! + x[i - 3]!;
+      break;
+    default:
+      for (let i = 4; i < n; i++)
         x[i] = x[i]! + 4 * x[i - 1]! - 6 * x[i - 2]! + 4 * x[i - 3]! - x[i - 4]!;
-    }
   }
 }
 
-const zigzag = (e: number) => (e >= 0 ? e * 2 : -e * 2 - 1);
-const unzigzag = (u: number) => (u % 2 === 0 ? u / 2 : -(u + 1) / 2);
+/** Zig-zag map, valid for |e| < 2^30 (residuals of <= 25-bit samples stay below 2^29). */
+const zigzag = (e: number) => ((e << 1) ^ (e >> 31)) >>> 0;
+const unzigzag = (u: number) =>
+  u < 0x80000000 ? (u >>> 1) ^ -(u & 1) : u % 2 === 0 ? u / 2 : -(u + 1) / 2;
 
 interface ChannelPlan {
   order: number;
@@ -214,32 +267,113 @@ interface ChannelPlan {
   res: Int32Array;
 }
 
-function riceBits(res: Int32Array, from: number, k: number): number {
-  let bits = 0;
-  const div = 2 ** k;
-  for (let i = from; i < res.length; i++) bits += Math.floor(zigzag(res[i]!) / div) + 1 + k;
-  return bits;
+// ---- scratch buffers -------------------------------------------------------
+// Reused across blocks so steady-state encoding/decoding allocates only the
+// output buffer. Safe because encode/decode are synchronous and never
+// re-entered; buffers never escape the codec.
+const pool: Int32Array[] = [];
+const SLOT_PLANAR = 0; // 0..7
+const SLOT_MID = 8;
+const SLOT_SIDE = 9;
+const SLOT_RES = 10; // 10..19
+const SLOT_DECODE = 20; // 20..27
+
+function scratch(slot: number, n: number): Int32Array {
+  let b = pool[slot];
+  if (!b || b.length !== n) pool[slot] = b = new Int32Array(n);
+  return b;
 }
 
-function planChannel(x: Int32Array, sampleBits: number): ChannelPlan {
-  if (x.every((v) => v === x[0])) return { order: CONSTANT, k: 0, bits: 8 + sampleBits, res: x };
-  let best: ChannelPlan | null = null;
-  const maxOrder = Math.min(MAX_ORDER, x.length - 1);
-  for (let order = 0; order <= maxOrder; order++) {
-    const res = new Int32Array(x.length);
-    residuals(x, order, res);
-    let sum = 0;
-    for (let i = order; i < x.length; i++) sum += zigzag(res[i]!);
-    const count = Math.max(1, x.length - order);
-    const mean = sum / count;
-    const k0 = mean < 1 ? 0 : Math.min(MAX_K, Math.floor(Math.log2(mean)));
-    for (const k of [k0 - 1, k0, k0 + 1]) {
-      if (k < 0 || k > MAX_K) continue;
-      const bits = 8 + order * sampleBits + riceBits(res, order, k);
-      if (!best || bits < best.bits) best = { order, k, bits, res };
+/**
+ * Mean |residual| for fixed orders 0..4 in one branch-free pass using the
+ * difference recurrence e_k[i] = e_(k-1)[i] - e_(k-1)[i-1]. All orders are
+ * compared over the same range (i >= 4), as FLAC's fixed-predictor search does.
+ */
+const costBuf = new Float64Array(5);
+function orderCosts(x: Int32Array): Float64Array {
+  const n = x.length;
+  let s0 = 0;
+  let s1 = 0;
+  let s2 = 0;
+  let s3 = 0;
+  let s4 = 0;
+  let l0 = x[3]!;
+  let l1 = x[3]! - x[2]!;
+  let l2 = l1 - (x[2]! - x[1]!);
+  let l3 = l2 - (x[2]! - x[1]! - (x[1]! - x[0]!));
+  for (let i = 4; i < n; i++) {
+    const e0 = x[i]!;
+    const e1 = e0 - l0;
+    const e2 = e1 - l1;
+    const e3 = e2 - l2;
+    const e4 = e3 - l3;
+    s0 += Math.abs(e0);
+    s1 += Math.abs(e1);
+    s2 += Math.abs(e2);
+    s3 += Math.abs(e3);
+    s4 += Math.abs(e4);
+    l0 = e0;
+    l1 = e1;
+    l2 = e2;
+    l3 = e3;
+  }
+  const m = n - 4;
+  costBuf[0] = s0 / m;
+  costBuf[1] = s1 / m;
+  costBuf[2] = s2 / m;
+  costBuf[3] = s3 / m;
+  costBuf[4] = s4 / m;
+  return costBuf;
+}
+
+function planChannel(x: Int32Array, sampleBits: number, resSlot: number): ChannelPlan {
+  const n = x.length;
+  const first = x[0];
+  let constant = true;
+  for (let i = 1; i < n; i++) {
+    if (x[i] !== first) {
+      constant = false;
+      break;
     }
   }
-  return best!;
+  if (constant) return { order: CONSTANT, k: 0, bits: 8 + sampleBits, res: x };
+
+  let order = 0;
+  let meanAbs: number;
+  if (n > 8) {
+    const costs = orderCosts(x);
+    for (let o = 1; o <= MAX_ORDER; o++) if (costs[o]! < costs[order]!) order = o;
+    meanAbs = costs[order]!;
+  } else {
+    // Tiny blocks: order 0 is as good as anything and keeps the search trivial.
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += Math.abs(x[i]!);
+    meanAbs = sum / n;
+  }
+  const res = scratch(resSlot, n);
+  residuals(x, order, res);
+
+  // Evaluate three Rice parameters around the estimate in a single pass.
+  const mean = meanAbs * 2; // mean zig-zag value ≈ 2 × mean |e|
+  const k0 = mean < 1 ? 0 : Math.min(MAX_K, Math.floor(Math.log2(mean)));
+  const ka = Math.max(0, Math.min(MAX_K - 2, k0 - 1));
+  let sa = 0;
+  let sb = 0;
+  let sc = 0;
+  for (let i = order; i < n; i++) {
+    const u = zigzag(res[i]!);
+    sa += u >>> ka;
+    sb += u >>> (ka + 1);
+    sc += u >>> (ka + 2);
+  }
+  const count = n - order;
+  const base = 8 + order * sampleBits;
+  const ba = base + sa + count * (1 + ka);
+  const bb = base + sb + count * (2 + ka);
+  const bc = base + sc + count * (3 + ka);
+  if (ba <= bb && ba <= bc) return { order, k: ka, bits: ba, res };
+  if (bb <= bc) return { order, k: ka + 1, bits: bb, res };
+  return { order, k: ka + 2, bits: bc, res };
 }
 
 // ---- public API ------------------------------------------------------------
@@ -267,9 +401,9 @@ export function encodeBlock(block: PcmBlock): Uint8Array<ArrayBuffer> {
 
   const planar: Int32Array[] = [];
   for (let c = 0; c < channels; c++) {
-    const ch = new Int32Array(frames);
-    for (let i = 0; i < frames; i++) {
-      const v = samples[i * channels + c]!;
+    const ch = scratch(SLOT_PLANAR + c, frames);
+    for (let i = 0, j = c; i < frames; i++, j += channels) {
+      const v = samples[j]!;
       if (v < lo || v > hi) throw new CodecError('Sample out of range for bit depth');
       ch[i] = v;
     }
@@ -277,45 +411,76 @@ export function encodeBlock(block: PcmBlock): Uint8Array<ArrayBuffer> {
   }
 
   // Try independent channels and, for stereo, mid/side; keep the smaller.
-  let plans = planar.map((ch) => planChannel(ch, bitDepth));
+  let plans = planar.map((ch, c) => planChannel(ch, bitDepth, SLOT_RES + c));
   let midSide = false;
   if (channels === 2) {
-    const mid = new Int32Array(frames);
-    const side = new Int32Array(frames);
+    const l = planar[0]!;
+    const r = planar[1]!;
+    const mid = scratch(SLOT_MID, frames);
+    const side = scratch(SLOT_SIDE, frames);
     for (let i = 0; i < frames; i++) {
-      const l = planar[0]![i]!;
-      const r = planar[1]![i]!;
-      mid[i] = (l + r) >> 1;
-      side[i] = l - r;
+      mid[i] = (l[i]! + r[i]!) >> 1;
+      side[i] = l[i]! - r[i]!;
     }
-    const ms = [planChannel(mid, bitDepth), planChannel(side, bitDepth + 1)];
+    const ms = [
+      planChannel(mid, bitDepth, SLOT_RES + 8),
+      planChannel(side, bitDepth + 1, SLOT_RES + 9),
+    ];
     if (ms[0]!.bits + ms[1]!.bits < plans[0]!.bits + plans[1]!.bits) {
       plans = ms;
       midSide = true;
     }
   }
 
-  const predictedBits = plans.reduce((a, p) => a + p.bits, 0);
+  let predictedBits = 0;
+  for (const p of plans) predictedBits += p.bits;
   const verbatimBits = frames * channels * bitDepth;
   const verbatim = verbatimBits <= predictedBits;
 
-  const w = new BitWriter(HEADER_BYTES + Math.ceil(Math.min(predictedBits, verbatimBits) / 8) + 8);
-  const header = new Uint8Array(HEADER_BYTES);
-  const dv = new DataView(header.buffer);
-  header[0] = 0x4d;
-  header[1] = 0x4c;
-  header[2] = VERSION;
-  header[3] = (midSide && !verbatim ? FLAG_MID_SIDE : 0) | (verbatim ? FLAG_VERBATIM : 0);
+  // Exact size is known from the plan: one allocation, which is the returned payload.
+  const out = new Uint8Array(HEADER_BYTES + Math.ceil(Math.min(predictedBits, verbatimBits) / 8));
+  const dv = new DataView(out.buffer);
+  out[0] = 0x4d;
+  out[1] = 0x4c;
+  out[2] = VERSION;
+  out[3] =
+    (midSide && !verbatim ? FLAG_MID_SIDE : 0) |
+    (verbatim ? FLAG_VERBATIM : 0) |
+    (block.discontinuity ? FLAG_DISCONTINUITY : 0);
   dv.setUint32(4, block.seq >>> 0, true);
   dv.setUint32(8, block.sampleRate, true);
-  header[12] = channels;
-  header[13] = bitDepth;
+  out[12] = channels;
+  out[13] = bitDepth;
   dv.setUint16(14, frames, true);
+  dv.setUint32(16, (block.firstFrame ?? 0) >>> 0, true);
+  dv.setUint32(20, (block.captureMs ?? 0) >>> 0, true);
 
+  if (verbatim && (bitDepth === 16 || bitDepth === 24)) {
+    // Byte-aligned fast path; identical to the bitstream (MSB-first = big-endian).
+    let o = HEADER_BYTES;
+    if (bitDepth === 16) {
+      for (let i = 0; i < samples.length; i++) {
+        const v = samples[i]!;
+        out[o++] = (v >> 8) & 0xff;
+        out[o++] = v & 0xff;
+      }
+    } else {
+      for (let i = 0; i < samples.length; i++) {
+        const v = samples[i]!;
+        out[o++] = (v >> 16) & 0xff;
+        out[o++] = (v >> 8) & 0xff;
+        out[o++] = v & 0xff;
+      }
+    }
+    return out;
+  }
+
+  const w = new BitWriter(out, HEADER_BYTES);
   if (verbatim) {
     for (let i = 0; i < samples.length; i++) w.write(samples[i]!, bitDepth);
   } else {
-    plans.forEach((p, c) => {
+    for (let c = 0; c < plans.length; c++) {
+      const p = plans[c]!;
       const sampleBits = midSide && c === 1 ? bitDepth + 1 : bitDepth;
       const src = midSide ? null : planar[c]!;
       w.write(p.order, 3);
@@ -323,27 +488,21 @@ export function encodeBlock(block: PcmBlock): Uint8Array<ArrayBuffer> {
       if (p.order === CONSTANT) {
         const v = src ? src[0]! : warmup(planar, c, 0);
         w.writeLarge(v < 0 ? v + 2 ** sampleBits : v, sampleBits);
-        return;
+        continue;
       }
       for (let i = 0; i < p.order; i++) {
-        // Warm-up samples are the original (or mid/side) values: recompute from residual base.
+        // Warm-up samples are stored verbatim (original or mid/side values).
         const v = src ? src[i]! : warmup(planar, c, i);
         w.writeLarge(v < 0 ? v + 2 ** sampleBits : v, sampleBits);
       }
-      const div = 2 ** p.k;
-      for (let i = p.order; i < frames; i++) {
-        const u = zigzag(p.res[i]!);
-        w.writeUnary(Math.floor(u / div));
-        w.writeLarge(u % div, p.k);
-      }
-    });
+      const res = p.res;
+      const k = p.k;
+      for (let i = p.order; i < frames; i++) w.writeRice(zigzag(res[i]!), k);
+    }
   }
-
-  const body = w.finish();
-  const out = new Uint8Array(HEADER_BYTES + body.length);
-  out.set(header, 0);
-  out.set(body, HEADER_BYTES);
-  return out;
+  const used = w.finish();
+  const buf = w.buffer as Uint8Array<ArrayBuffer>;
+  return used === buf.length ? buf : buf.slice(0, used);
 }
 
 function warmup(planar: Int32Array[], c: number, i: number): number {
@@ -352,17 +511,20 @@ function warmup(planar: Int32Array[], c: number, i: number): number {
   return c === 0 ? (l + r) >> 1 : l - r;
 }
 
-export function peekHeader(bytes: Uint8Array): Omit<PcmBlock, 'samples'> & { frames: number } {
+export function peekHeader(bytes: Uint8Array): BlockHeader {
   if (bytes.length < HEADER_BYTES || bytes[0] !== 0x4d || bytes[1] !== 0x4c)
     throw new CodecError('Bad magic');
   if (bytes[2] !== VERSION) throw new CodecError('Unsupported version');
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const meta = {
+  const meta: BlockHeader = {
     seq: dv.getUint32(4, true),
     sampleRate: dv.getUint32(8, true),
     channels: bytes[12]!,
     bitDepth: bytes[13]!,
     frames: dv.getUint16(14, true),
+    firstFrame: dv.getUint32(16, true),
+    captureMs: dv.getUint32(20, true),
+    discontinuity: (bytes[3]! & FLAG_DISCONTINUITY) !== 0,
   };
   validate(meta, meta.frames);
   return meta;
@@ -372,11 +534,27 @@ export function decodeBlock(bytes: Uint8Array): PcmBlock {
   const meta = peekHeader(bytes);
   const { channels, bitDepth, frames } = meta;
   const flags = bytes[3]!;
+  if (flags & ~KNOWN_FLAGS) throw new CodecError('Unknown flags');
+  if (flags & FLAG_VERBATIM && flags & FLAG_MID_SIDE) throw new CodecError('Invalid flag combination');
   const out = new Int32Array(frames * channels);
   const r = new BitReader(bytes, HEADER_BYTES);
 
   if (flags & FLAG_VERBATIM) {
-    for (let i = 0; i < out.length; i++) out[i] = r.readSigned(bitDepth);
+    if (bitDepth === 16 || bitDepth === 24) {
+      const bpsBytes = bitDepth / 8;
+      if (bytes.length !== HEADER_BYTES + out.length * bpsBytes) throw new CodecError('Bad block length');
+      let o = HEADER_BYTES;
+      if (bitDepth === 16) {
+        for (let i = 0; i < out.length; i++, o += 2)
+          out[i] = ((bytes[o]! << 24) | (bytes[o + 1]! << 16)) >> 16;
+      } else {
+        for (let i = 0; i < out.length; i++, o += 3)
+          out[i] = ((bytes[o]! << 24) | (bytes[o + 1]! << 16) | (bytes[o + 2]! << 8)) >> 8;
+      }
+    } else {
+      for (let i = 0; i < out.length; i++) out[i] = r.readSigned(bitDepth);
+      if (!r.atEnd()) throw new CodecError('Trailing data after block');
+    }
     return { ...meta, samples: out };
   }
 
@@ -389,12 +567,12 @@ export function decodeBlock(bytes: Uint8Array): PcmBlock {
     const order = r.read(3);
     const k = r.read(5);
     if (order === CONSTANT) {
-      planar.push(new Int32Array(frames).fill(r.readSigned(sampleBits)));
+      planar.push(scratch(SLOT_DECODE + c, frames).fill(r.readSigned(sampleBits)));
       continue;
     }
     if (order > MAX_ORDER || order > frames - 1 || k > MAX_K)
       throw new CodecError('Bad channel header');
-    const x = new Int32Array(frames);
+    const x = scratch(SLOT_DECODE + c, frames);
     for (let i = 0; i < Math.min(order, frames); i++) x[i] = r.readSigned(sampleBits);
     const div = 2 ** k;
     for (let i = order; i < frames; i++) {
@@ -404,6 +582,7 @@ export function decodeBlock(bytes: Uint8Array): PcmBlock {
     restore(x, order);
     planar.push(x);
   }
+  if (!r.atEnd()) throw new CodecError('Trailing data after block');
 
   for (let i = 0; i < frames; i++) {
     if (midSide) {
@@ -423,3 +602,6 @@ export function decodeBlock(bytes: Uint8Array): PcmBlock {
   }
   return { ...meta, samples: out };
 }
+
+/** Internals exposed for unit tests only. */
+export const __test = { BitWriter, BitReader };
