@@ -1,0 +1,295 @@
+{
+  "variant": "baseline",
+  "contention": 2,
+  "seconds": 120,
+  "startedAt": "2026-10-12T14:07:20.813Z",
+  "machine": {
+    "cpus": 4,
+    "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "loadAvg1Before": 2.73,
+    "loadAvg1After": 3.33,
+    "browser": "chromium 141.0.7390.37"
+  },
+  "analysis": {
+    "blocks": {
+      "traced": 12221,
+      "analysed": 11420,
+      "notAdmitted": 0,
+      "neverPlayed": 0
+    },
+    "outages": {
+      "count": 0,
+      "totalMs": 0,
+      "recoveryMs": {
+        "n": 0,
+        "min": null,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null,
+        "mean": null
+      }
+    },
+    "stages": {
+      "formation": {
+        "n": 11420,
+        "min": 10,
+        "p50": 10,
+        "p95": 10,
+        "p99": 10,
+        "max": 10,
+        "mean": 10
+      },
+      "captureToPage": {
+        "n": 11420,
+        "min": 0.07,
+        "p50": 7.17,
+        "p95": 39.8,
+        "p99": 61.13,
+        "max": 104.77,
+        "mean": 10.58
+      },
+      "encodeWait": {
+        "n": 11420,
+        "min": 0,
+        "p50": 0.2,
+        "p95": 2.1,
+        "p99": 4.5,
+        "max": 26.8,
+        "mean": 0.46
+      },
+      "encode": {
+        "n": 11420,
+        "min": 0,
+        "p50": 0,
+        "p95": 0.1,
+        "p99": 0.2,
+        "max": 5.5,
+        "mean": 0.03
+      },
+      "sendCall": {
+        "n": 11420,
+        "min": 0,
+        "p50": 0.1,
+        "p95": 0.6,
+        "p99": 1.7,
+        "max": 16.6,
+        "mean": 0.21
+      },
+      "transport": {
+        "n": 11420,
+        "min": -1.51,
+        "p50": -1.01,
+        "p95": 1.89,
+        "p99": 4.59,
+        "max": 35.19,
+        "mean": -0.62
+      },
+      "decodeWait": {
+        "n": 11420,
+        "min": 0,
+        "p50": 0.2,
+        "p95": 2,
+        "p99": 4,
+        "max": 14.8,
+        "mean": 0.44
+      },
+      "decode": {
+        "n": 11420,
+        "min": 0,
+        "p50": 0,
+        "p95": 0.1,
+        "p99": 0.2,
+        "max": 6.8,
+        "mean": 0.05
+      },
+      "pageToWorklet": {
+        "n": 11420,
+        "min": -60.53,
+        "p50": -6.13,
+        "p95": -3.53,
+        "p99": -0.77,
+        "max": 2.33,
+        "mean": -10.39
+      },
+      "buffer": {
+        "n": 11420,
+        "min": 7.92,
+        "p50": 52.08,
+        "p95": 62.04,
+        "p99": 64.04,
+        "max": 64.04,
+        "mean": 50.49
+      }
+    },
+    "pipeline": {
+      "n": 11420,
+      "min": 3.31,
+      "p50": 65.75,
+      "p95": 68.86,
+      "p99": 77.56,
+      "max": 77.56,
+      "mean": 61.03
+    },
+    "cushion": {
+      "atArrival": {
+        "n": 11420,
+        "min": 7.92,
+        "p50": 52.04,
+        "p95": 62.04,
+        "p99": 64.04,
+        "max": 64.04,
+        "mean": 50.47
+      },
+      "min10s": {
+        "n": 11,
+        "min": 7.92,
+        "p50": 18.42,
+        "p95": 36.04,
+        "p99": 36.04,
+        "max": 36.04,
+        "mean": 22.29
+      }
+    },
+    "clockUncertaintyMs": 7.7,
+    "outputLatencyReportedMs": {
+      "host": 40.02,
+      "listener": 40.02
+    },
+    "queues": {
+      "encodeQueueBlocks": {
+        "n": 11420,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 1,
+        "max": 3,
+        "mean": 0.05
+      },
+      "sendQueueBlocks": {
+        "n": 11420,
+        "min": 1,
+        "p50": 1,
+        "p95": 1,
+        "p99": 1,
+        "max": 1,
+        "mean": 1
+      },
+      "oldestQueuedMs": {
+        "n": 11420,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0.1,
+        "max": 19.4,
+        "mean": 0.01
+      },
+      "decodeQueueBlocks": {
+        "n": 11420,
+        "min": 1,
+        "p50": 1,
+        "p95": 1,
+        "p99": 2,
+        "max": 4,
+        "mean": 1.05
+      },
+      "targetMs": {
+        "n": 11420,
+        "min": 52.44,
+        "p50": 66.67,
+        "p95": 81.77,
+        "p99": 81.77,
+        "max": 81.77,
+        "mean": 67.92
+      }
+    },
+    "jitter": {
+      "interArrivalDev": {
+        "n": 12024,
+        "min": 0,
+        "p50": 0.5,
+        "p95": 9.9,
+        "p99": 12.1,
+        "max": 79.3,
+        "mean": 2.17
+      },
+      "bunchedShare": 0.049,
+      "listenerArrivalSpread10s": {
+        "n": 11,
+        "min": 21.9,
+        "p50": 35.4,
+        "p95": 82.5,
+        "p99": 82.5,
+        "max": 82.5,
+        "mean": 44.89
+      },
+      "hostCaptureSpread10s": {
+        "n": 11,
+        "min": 13.5,
+        "p50": 25,
+        "p95": 76.2,
+        "p99": 76.2,
+        "max": 76.2,
+        "mean": 37.55
+      },
+      "workletArrivalSpread10s": {
+        "n": 11,
+        "min": 24.67,
+        "p50": 33.33,
+        "p95": 46,
+        "p99": 46,
+        "max": 46,
+        "mean": 34.48
+      }
+    },
+    "longTasks": {
+      "host": {
+        "count": 2,
+        "totalMs": 4639
+      },
+      "listener": {
+        "count": 0,
+        "totalMs": 0
+      }
+    },
+    "tail": {
+      "formation": 10,
+      "captureToPage": 18.45,
+      "encodeWait": 0.44,
+      "encode": 0.02,
+      "sendCall": 0.19,
+      "transport": -0.57,
+      "decodeWait": 0.41,
+      "decode": 0.05,
+      "pageToWorklet": -5.83,
+      "buffer": 54.6
+    },
+    "lowCushion": []
+  },
+  "onsetSameMachineMs": {
+    "n": 127,
+    "min": 35.1,
+    "p50": 55.7,
+    "p95": 75.5,
+    "p99": 85.2,
+    "max": 85.2,
+    "mean": 59.78
+  },
+  "listener": {
+    "outages": "0",
+    "lastRecovery": "—",
+    "silence": "0.00 s",
+    "announcedGaps": "0",
+    "unannouncedGaps": "0",
+    "clockCorrections": "1794",
+    "bufferTarget": "58 ms (jitter 25.3 ms, stall memory 28 ms)"
+  },
+  "host": {
+    "interruptions": "0",
+    "audioNotSent": "0.00 s"
+  },
+  "memory": {
+    "hostHeapMB": 19,
+    "listenerHeapMB": 11.9
+  }
+}

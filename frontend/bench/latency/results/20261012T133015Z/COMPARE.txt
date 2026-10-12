@@ -1,0 +1,32 @@
+
+== contention 0: baseline n=4 vs fixed-drift-window n=4 ==
+  onset p50                   61.95 ->    54.85  (  -7.10)  p(lower)=0.057
+  onset p95                   79.75 ->    87.05  (  +7.30)  p(lower)=0.829
+  onset p99                   80.60 ->    92.10  ( +11.50)  p(lower)=0.657
+  pipeline p50                67.25 ->    57.39  (  -9.86)  p(lower)=0.029
+  pipeline p99               131.47 ->    95.14  ( -36.33)  p(lower)=0.343
+  buffer p50                  57.41 ->    43.72  ( -13.69)  p(lower)=0.014
+  cushion min                 10.46 ->     3.54  (  -6.92)  p(lower)=0.171
+  outages (trace, window)      0.00 ->     0.00  (  +0.00)  p(lower)=1.000
+  outage silence ms            0.00 ->     0.00  (  +0.00)  p(lower)=1.000
+  recovery max ms          (no data)
+  clock corrections         1722.50 ->  2736.00  (+1013.50)  p(lower)=0.943
+  listener heap MB            10.55 ->    10.70  (  +0.15)  p(lower)=0.714
+  decode+wait p99              1.70 ->     1.70  (  +0.00)  p(lower)=0.571
+  encode+wait p99              1.95 ->     1.80  (  -0.15)  p(lower)=0.486
+
+== contention 2: baseline n=4 vs fixed-drift-window n=4 ==
+  onset p50                   79.60 ->    72.95  (  -6.65)  p(lower)=0.343
+  onset p95                   96.20 ->   102.65  (  +6.45)  p(lower)=0.657
+  onset p99                  112.05 ->   109.90  (  -2.15)  p(lower)=0.343
+  pipeline p50                80.97 ->    79.00  (  -1.96)  p(lower)=0.443
+  pipeline p99               109.61 ->   108.66  (  -0.95)  p(lower)=0.557
+  buffer p50                  65.88 ->    65.03  (  -0.84)  p(lower)=0.443
+  cushion min                  7.83 ->     1.11  (  -6.71)  p(lower)=0.100
+  outages (trace, window)      0.00 ->     1.00  (  +1.00)  p(lower)=0.871
+  outage silence ms            0.00 ->    65.50  ( +65.50)  p(lower)=0.929
+  recovery max ms             48.02 ->    71.96  ( +23.94)  p(lower)=1.000
+  clock corrections         2008.50 ->  5941.00  (+3932.50)  p(lower)=0.986
+  listener heap MB            11.55 ->    11.00  (  -0.55)  p(lower)=0.157
+  decode+wait p99              4.25 ->     4.50  (  +0.25)  p(lower)=0.829
+  encode+wait p99              4.95 ->     4.65  (  -0.30)  p(lower)=0.100

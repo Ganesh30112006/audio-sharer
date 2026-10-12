@@ -31,7 +31,12 @@ interface PlaybackOptions {
   adaptive?: boolean;
   /** Lower bound for the adaptive target. */
   minMs?: number;
+  /** Report per-block arrival and first-render times (latency trace). */
+  trace?: boolean;
 }
+
+/** Pending traced blocks waiting for their first frame to be rendered. */
+const TRACE_PENDING = 512;
 
 const SMOOTHING_SECONDS = 2;
 /** Minimum render quanta between single-frame corrections (~21 ms at 48 kHz). */
@@ -99,6 +104,12 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
   private stallMemory = 0;
   private stallUpdated = 0;
   private adaptations = 0;
+  /** Latency trace: ring of [seq, startFrame, arriveMs, level, target] and output items. */
+  private readonly trace: boolean;
+  private readonly pending: Float64Array | null;
+  private pendHead = 0;
+  private pendTail = 0;
+  private traceOut: number[] = [];
 
   constructor(options: AudioWorkletNodeOptions) {
     super(options);
@@ -112,20 +123,26 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
     this.target = 0;
     this.window = 0;
     this.setTarget(this.frames(o.targetMs));
+    this.trace = o.trace ?? false;
+    this.pending = this.trace ? new Float64Array(TRACE_PENDING * 5) : null;
     this.port.onmessage = (e: MessageEvent) => {
       const msg = e.data as {
         type: string;
         pcm?: Float32Array;
+        seq?: number;
         targetMs?: number;
         adaptive?: boolean;
       };
-      if (msg.type === 'pcm' && msg.pcm) this.push(msg.pcm);
-      else if (msg.type === 'target' && msg.targetMs !== undefined) {
+      if (msg.type === 'pcm' && msg.pcm) {
+        if (this.pending && msg.seq !== undefined) this.traceArrive(msg.seq);
+        this.push(msg.pcm);
+      } else if (msg.type === 'target' && msg.targetMs !== undefined) {
         this.adaptive = msg.adaptive ?? this.adaptive;
         this.setTarget(this.frames(msg.targetMs));
         this.calmSince = currentTime;
       } else if (msg.type === 'reset') {
         // Discontinuity: never splice across a gap; flush and re-buffer.
+        this.traceFlush();
         this.skippedFrames += this.writeFrame - this.readFrame;
         this.readFrame = this.writeFrame = 0;
         this.resetTimeline();
@@ -151,6 +168,45 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
   private resetTimeline(): void {
     this.offsetCount = this.offsetNext = 0;
     this.timelineFrames = 0;
+  }
+
+  /** Records a block's arrival (render clock) and where its first frame lands in the ring. */
+  private traceArrive(seq: number): void {
+    const p = this.pending!;
+    if (this.pendTail - this.pendHead >= TRACE_PENDING) this.traceSettle(NaN);
+    const i = (this.pendTail++ % TRACE_PENDING) * 5;
+    p[i] = seq;
+    p[i + 1] = this.writeFrame; // ring position of the block's first frame
+    p[i + 2] = currentTime * 1000;
+    p[i + 3] = this.writeFrame - this.readFrame;
+    p[i + 4] = this.target;
+  }
+
+  /** Emits [seq, arriveLA, playLA, bufferFrames, targetFrames] for the oldest pending block. */
+  private traceSettle(playMs: number): void {
+    const p = this.pending!;
+    const i = (this.pendHead++ % TRACE_PENDING) * 5;
+    this.traceOut.push(p[i]!, p[i + 2]!, playMs, p[i + 3]!, p[i + 4]!);
+  }
+
+  /** Blocks discarded by a reset never play. */
+  private traceFlush(): void {
+    if (!this.pending) return;
+    while (this.pendHead < this.pendTail) this.traceSettle(NaN);
+  }
+
+  /** Called with the ring range [from, from + n) about to be rendered at currentTime. */
+  private tracePlayed(from: number, n: number): void {
+    const p = this.pending!;
+    while (this.pendHead < this.pendTail) {
+      const start = p[(this.pendHead % TRACE_PENDING) * 5 + 1]!;
+      if (start >= from + n) break;
+      // Started before this quantum without being rendered: skipped (trim/resync).
+      // (One frame of slack: a drift correction may drop a single frame.)
+      this.traceSettle(
+        start < from - 1 ? NaN : (currentTime + Math.max(0, start - from) / sampleRate) * 1000,
+      );
+    }
   }
 
   private push(pcm: Float32Array): void {
@@ -285,6 +341,7 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
     }
     const repeat = due && this.correcting === -1 && level > n;
     if (repeat) this.avgLevel++;
+    if (this.pending) this.tracePlayed(this.readFrame, n);
     for (let i = 0; i < n; i++) {
       const idx = (this.readFrame + i) % this.cap;
       for (let c = 0; c < out.length; c++)
@@ -304,6 +361,11 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
   private report(level: number): void {
     if (currentTime - this.lastReport < 0.5) return;
     this.lastReport = currentTime;
+    if (this.traceOut.length) {
+      const items = Float64Array.from(this.traceOut);
+      this.traceOut = [];
+      this.port.postMessage({ type: 'trace', items }, [items.buffer]);
+    }
     this.port.postMessage({
       type: 'stats',
       bufferMs: (level / sampleRate) * 1000,

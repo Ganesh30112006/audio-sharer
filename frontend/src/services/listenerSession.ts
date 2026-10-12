@@ -1,3 +1,4 @@
+import { exposeTrace, latencyTraceEnabled, ReceiverTrace } from '../audio/lossless/latencyTrace';
 import { LOSSLESS_TARGET_MS, LosslessReceiver } from '../audio/lossless/LosslessReceiver';
 import { MultiOutputPlayer } from '../audio/MultiOutputPlayer';
 import { DEFAULT_OUTPUT } from '../audio/outputDevices';
@@ -36,7 +37,11 @@ export class ListenerSession {
     hasAudio: false,
     error: null,
   });
-  readonly lossless = new LosslessReceiver(() => this.clock.now());
+  /** Per-block latency trace, only when `mc.latencyTrace` is set (benchmarks). */
+  private readonly latencyTrace = latencyTraceEnabled()
+    ? new ReceiverTrace(() => this.clock.current)
+    : null;
+  readonly lossless = new LosslessReceiver(() => this.clock.now(), undefined, this.latencyTrace);
   private disposer = new Disposer();
   private disposed = false;
   private remoteStream: MediaStream | null = null;
@@ -44,6 +49,7 @@ export class ListenerSession {
   private playing: MediaStream | null = null;
 
   constructor(readonly code: string) {
+    if (this.latencyTrace) exposeTrace('listener', this.latencyTrace);
     this.disposer.add(
       this.conn.events.on('remoteAudio', ({ stream }) => {
         this.remoteStream = stream;
@@ -141,6 +147,7 @@ export class ListenerSession {
   }
 
   async dispose(): Promise<void> {
+    this.latencyTrace?.dispose();
     if (this.disposed) return;
     this.disposed = true;
     this.disposer.dispose();

@@ -116,6 +116,16 @@ export class SendPipeline {
     return this.gen;
   }
 
+  /** Sequence number the next captured block will get (latency trace). */
+  get nextSeq(): number {
+    return this.seq;
+  }
+
+  /** Last sequence number admitted to the encode queue (latency trace). */
+  get lastAdmittedSeq(): number | null {
+    return this.lastAdmitted;
+  }
+
   /**
    * Called for every captured block. Never blocks: either admits the block to
    * the encode queue or accounts for it in the current interruption.

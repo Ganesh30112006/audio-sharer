@@ -1,0 +1,156 @@
+
+== baseline, contention 0: 4 trials ==
+  onset p50                median    61.95   trials 77.00 63.60 57.30 60.30
+  onset p95                median    79.75   trials 87.40 82.30 77.20 70.00
+  onset p99                median    80.60   trials 102.70 83.30 77.90 71.30
+  pipeline p50             median    67.25   trials 81.93 62.91 57.91 71.58
+  pipeline p99             median   131.47   trials 91.70 101.48 299.40 161.45
+  buffer p50               median    57.41   trials 64.79 55.90 51.63 58.92
+  formation                median    10.00   trials 10.00 10.00 10.00 10.00
+  captureToPage p50        median     6.72   trials 6.67 6.77 6.63 7.10
+  captureToPage p99        median    84.78   trials 70.47 27.07 226.63 99.10
+  transport p50            median     0.92   trials 1.14 -1.42 0.70 1.67
+  transport p99            median     3.38   trials 4.14 1.68 2.90 3.86
+  encode+wait p99          median     1.95   trials 2.40 2.10 1.80 1.60
+  decode+wait p99          median     1.70   trials 2.10 1.80 1.60 1.40
+  pageToWorklet p50        median    -7.62   trials -2.47 -6.97 -8.27 -8.33
+  cushion min10s p50       median    40.74   trials 46.02 39.23 31.15 42.25
+  cushion min              median    10.46   trials 5.00 20.56 15.08 5.83
+  target p50               median    66.23   trials 75.90 67.56 61.33 64.90
+  worklet spread10s p50    median    24.66   trials 23.33 26.00 23.33 26.00
+  worklet spread10s max    median    48.00   trials 50.00 47.33 48.67 46.00
+  listener spread10s p50   median    24.70   trials 24.70 25.90 20.60 24.70
+  host spread10s p50       median    17.25   trials 17.70 16.30 16.80 19.80
+  interarrival dev p99     median    10.35   trials 10.40 10.40 10.30 10.30
+  bunched share            median     0.05   trials 0.05 0.05 0.05 0.05
+  send queue max           median     1.00   trials 1.00 1.00 1.00 1.00
+  decode queue max         median     4.00   trials 4.00 3.00 4.00 4.00
+  queue age max            median     6.75   trials 11.10 2.10 20.10 2.40
+  outages (trace, window)  median     0.00   trials 0.00 0.00 0.00 0.00
+  outage silence ms        median     0.00   trials 0.00 0.00 0.00 0.00
+  recovery max ms          median      nan   trials nan nan nan nan
+  outages (UI, whole run)  median     0.00   trials 0.00 0.00 0.00 0.00
+  clock corrections        median  1722.50   trials 2720.00 196.00 2441.00 1004.00
+  host interruptions       median     0.00   trials 0.00 0.00 0.00 0.00
+  never played             median     0.00   trials 0.00 0.00 0.00 0.00
+  host long tasks          median     2.00   trials 2.00 2.00 2.00 2.00
+  listener long tasks      median     0.00   trials 0.00 0.00 0.00 0.00
+  listener heap MB         median    10.55   trials 10.10 10.90 10.30 10.80
+  load1 after              median     1.30   trials 1.14 1.47 1.75 1.14
+
+== baseline, contention 2: 4 trials ==
+  onset p50                median    79.60   trials 115.00 89.00 70.20 55.70
+  onset p95                median    96.20   trials 136.20 102.00 90.40 75.50
+  onset p99                median   112.05   trials 139.30 132.80 91.30 85.20
+  pipeline p50             median    80.97   trials 103.16 90.50 71.43 65.75
+  pipeline p99             median   109.61   trials 169.79 102.84 116.38 77.56
+  buffer p50               median    65.88   trials 94.02 74.77 56.98 52.08
+  formation                median    10.00   trials 10.00 10.00 10.00 10.00
+  captureToPage p50        median     7.15   trials 7.13 6.83 7.27 7.17
+  captureToPage p99        median    64.98   trials 99.30 54.90 68.83 61.13
+  transport p50            median     0.78   trials -0.11 1.96 1.68 -1.01
+  transport p99            median     6.43   trials 5.88 8.76 6.98 4.59
+  encode+wait p99          median     4.95   trials 5.20 5.30 4.70 4.70
+  decode+wait p99          median     4.25   trials 4.30 5.10 4.20 4.20
+  pageToWorklet p50        median    -5.77   trials -7.13 -2.43 -5.40 -6.13
+  cushion min10s p50       median    34.73   trials 64.69 47.44 22.02 18.42
+  cushion min              median     7.83   trials 0.56 12.90 7.73 7.92
+  target p50               median    83.12   trials 110.23 85.33 80.90 66.67
+  worklet spread10s p50    median    38.00   trials 41.33 35.33 40.67 33.33
+  worklet spread10s max    median    55.67   trials 104.67 60.67 50.67 46.00
+  listener spread10s p50   median    35.80   trials 36.20 32.60 41.00 35.40
+  host spread10s p50       median    24.85   trials 28.20 23.50 24.70 25.00
+  interarrival dev p99     median    11.80   trials 11.90 11.60 11.70 12.10
+  bunched share            median     0.05   trials 0.05 0.05 0.05 0.05
+  send queue max           median     1.00   trials 1.00 1.00 1.00 1.00
+  decode queue max         median     4.50   trials 10.00 4.00 5.00 4.00
+  queue age max            median    33.55   trials 143.70 8.20 47.70 19.40
+  outages (trace, window)  median     0.00   trials 2.00 0.00 0.00 0.00
+  outage silence ms        median     0.00   trials 64.00 0.00 0.00 0.00
+  recovery max ms          median    48.02   trials 48.02 nan nan nan
+  outages (UI, whole run)  median     0.50   trials 2.00 0.00 1.00 0.00
+  clock corrections        median  2008.50   trials 2444.00 1189.00 2223.00 1794.00
+  host interruptions       median     0.00   trials 0.00 0.00 0.00 0.00
+  never played             median     0.00   trials 0.00 0.00 0.00 0.00
+  host long tasks          median     2.00   trials 3.00 2.00 2.00 2.00
+  listener long tasks      median     0.00   trials 1.00 0.00 0.00 0.00
+  listener heap MB         median    11.55   trials 11.20 12.10 10.90 11.90
+  load1 after              median     3.35   trials 3.37 4.21 2.96 3.33
+
+== fixed-drift-window, contention 0: 4 trials ==
+  onset p50                median    54.85   trials 53.70 48.30 60.70 56.00
+  onset p95                median    87.05   trials 83.40 98.00 90.70 66.50
+  onset p99                median    92.10   trials 93.10 98.10 91.10 68.10
+  pipeline p50             median    57.39   trials 56.95 57.83 60.37 52.78
+  pipeline p99             median    95.14   trials 92.96 97.32 301.18 73.50
+  buffer p50               median    43.72   trials 43.54 44.77 43.90 36.10
+  formation                median    10.00   trials 10.00 10.00 10.00 10.00
+  captureToPage p50        median     6.63   trials 6.63 6.23 6.83 6.63
+  captureToPage p99        median    62.54   trials 28.90 38.70 318.00 86.37
+  transport p50            median     1.33   trials -1.10 1.09 1.75 1.58
+  transport p99            median     3.88   trials 1.90 3.79 4.25 3.98
+  encode+wait p99          median     1.80   trials 2.40 1.90 1.70 1.60
+  decode+wait p99          median     1.70   trials 2.00 1.80 1.60 1.50
+  pageToWorklet p50        median    -2.37   trials -2.83 -2.60 -2.13 -2.00
+  cushion min10s p50       median    30.78   trials 29.79 33.52 31.77 25.92
+  cushion min              median     3.54   trials 0.10 11.69 1.08 6.00
+  target p50               median    47.50   trials 46.00 49.00 52.33 42.00
+  worklet spread10s p50    median    21.00   trials 23.33 23.33 18.67 18.67
+  worklet spread10s max    median    46.66   trials 51.33 42.00 64.67 31.33
+  listener spread10s p50   median    19.90   trials 18.50 20.50 19.30 21.90
+  host spread10s p50       median    14.65   trials 14.00 15.00 14.40 14.90
+  interarrival dev p99     median    10.35   trials 10.50 10.30 10.30 10.40
+  bunched share            median     0.05   trials 0.05 0.05 0.05 0.05
+  send queue max           median     1.00   trials 1.00 1.00 1.00 1.00
+  decode queue max         median     3.50   trials 4.00 3.00 5.00 3.00
+  queue age max            median     3.50   trials 4.50 1.40 62.00 2.50
+  outages (trace, window)  median     0.00   trials 0.00 0.00 1.00 0.00
+  outage silence ms        median     0.00   trials 0.00 0.00 32.00 0.00
+  recovery max ms          median    32.00   trials nan nan 32.00 nan
+  outages (UI, whole run)  median     0.00   trials 0.00 0.00 1.00 0.00
+  clock corrections        median  2736.00   trials 2551.00 2921.00 3120.00 1793.00
+  host interruptions       median     0.00   trials 0.00 0.00 0.00 0.00
+  never played             median     0.00   trials 0.00 0.00 0.00 0.00
+  host long tasks          median     2.00   trials 2.00 2.00 3.00 2.00
+  listener long tasks      median     0.00   trials 0.00 0.00 1.00 0.00
+  listener heap MB         median    10.70   trials 11.00 10.60 10.70 10.70
+  load1 after              median     0.99   trials 0.61 1.80 0.85 1.14
+
+== fixed-drift-window, contention 2: 4 trials ==
+  onset p50                median    72.95   trials 76.40 62.90 69.50 85.60
+  onset p95                median   102.65   trials 115.90 81.90 97.90 107.40
+  onset p99                median   109.90   trials 125.70 82.90 102.70 117.10
+  pipeline p50             median    79.00   trials 78.47 68.71 79.54 85.95
+  pipeline p99             median   108.66   trials 134.59 78.20 105.57 111.74
+  buffer p50               median    65.03   trials 66.54 55.65 63.52 68.77
+  formation                median    10.00   trials 10.00 10.00 10.00 10.00
+  captureToPage p50        median     6.92   trials 6.87 6.97 6.63 7.23
+  captureToPage p99        median    97.17   trials 71.33 109.93 84.40 118.97
+  transport p50            median     1.77   trials 1.05 1.80 1.75 2.07
+  transport p99            median     7.42   trials 7.05 7.50 7.35 8.67
+  encode+wait p99          median     4.65   trials 4.70 4.60 4.50 4.90
+  decode+wait p99          median     4.50   trials 4.50 4.50 4.30 4.60
+  pageToWorklet p50        median    -5.52   trials -8.33 -8.27 -2.57 -2.77
+  cushion min10s p50       median    29.32   trials 30.04 28.60 21.42 45.73
+  cushion min              median     1.11   trials 0.06 1.60 0.90 1.33
+  target p50               median    70.84   trials 79.00 61.67 69.67 72.00
+  worklet spread10s p50    median    34.33   trials 38.67 35.33 33.33 30.00
+  worklet spread10s max    median    60.00   trials 61.33 54.67 58.67 73.33
+  listener spread10s p50   median    36.75   trials 35.20 26.20 40.20 38.30
+  host spread10s p50       median    24.05   trials 22.10 20.80 26.00 35.50
+  interarrival dev p99     median    12.00   trials 12.00 12.00 11.30 12.10
+  bunched share            median     0.05   trials 0.05 0.05 0.05 0.05
+  send queue max           median     1.00   trials 1.00 1.00 1.00 1.00
+  decode queue max         median     5.00   trials 5.00 4.00 5.00 5.00
+  queue age max            median    39.30   trials 33.40 45.20 28.20 64.50
+  outages (trace, window)  median     1.00   trials 3.00 0.00 1.00 1.00
+  outage silence ms        median    65.50   trials 168.00 0.00 59.00 72.00
+  recovery max ms          median    71.96   trials 82.63 nan 58.65 71.96
+  outages (UI, whole run)  median     1.50   trials 4.00 1.00 1.00 2.00
+  clock corrections        median  5941.00   trials 7374.00 2410.00 5451.00 6431.00
+  host interruptions       median     0.00   trials 0.00 0.00 0.00 0.00
+  never played             median     0.00   trials 0.00 0.00 0.00 0.00
+  host long tasks          median     2.50   trials 3.00 3.00 2.00 2.00
+  listener long tasks      median     0.50   trials 0.00 1.00 1.00 0.00
+  listener heap MB         median    11.00   trials 11.00 11.00 11.60 10.20
+  load1 after              median     3.25   trials 4.80 3.15 3.36 2.89

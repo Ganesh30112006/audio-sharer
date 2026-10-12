@@ -1,5 +1,6 @@
 import { createPlaybackContext } from '../audio/audioContext';
 import { LocalFilePlayer } from '../audio/LocalFilePlayer';
+import { exposeTrace, latencyTraceEnabled, SenderTrace } from '../audio/lossless/latencyTrace';
 import { LosslessSender } from '../audio/lossless/LosslessSender';
 import { policyFor, type QualityPreset, type SourcePolicy } from '../audio/sourcePolicy';
 import {
@@ -52,9 +53,14 @@ export class HostSession {
   readonly clock = new ServerClock(api.serverTime);
   readonly sync: SyncPublisher;
   readonly store: Store<HostState>;
+  /** Per-block latency trace, only when `mc.latencyTrace` is set (benchmarks). */
+  private readonly latencyTrace = latencyTraceEnabled()
+    ? new SenderTrace(() => this.clock.current)
+    : null;
   readonly lossless = new LosslessSender(
     (payload) => this.conn.sendData(payload, undefined, PCM_TOPIC),
     () => this.clock.now(),
+    this.latencyTrace,
   );
   private capture: OwnedCapture | null = null;
   /** Web Audio graph feeding a capture track to the lossless sender. */
@@ -66,6 +72,7 @@ export class HostSession {
     readonly code: string,
     private readonly hostKey: string,
   ) {
+    if (this.latencyTrace) exposeTrace('host', this.latencyTrace);
     this.store = createStore<HostState>({
       phase: 'idle',
       source: 'file',
@@ -380,6 +387,7 @@ export class HostSession {
   }
 
   async dispose(): Promise<void> {
+    this.latencyTrace?.dispose();
     if (this.disposed) return;
     this.disposed = true;
     this.disposer.dispose();

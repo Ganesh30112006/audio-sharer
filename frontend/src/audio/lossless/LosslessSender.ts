@@ -4,7 +4,9 @@ import type { CapturedBlock } from './captureAssembler';
 import { CaptureLifecycle, type CaptureNodeHandle } from './captureLifecycle';
 import { CodecClient } from './codecClient';
 import type { CodecReply } from './codecWorker';
+import { peekHeader } from './codec';
 import type { Interruption } from './flowControl';
+import type { SenderTrace } from './latencyTrace';
 import { SendPipeline } from './pipeline';
 
 /** Target block duration. */
@@ -101,7 +103,26 @@ export class LosslessSender {
   captureDiag: CaptureDiag | null = null;
   private static modules = new WeakMap<BaseAudioContext, Promise<void>>();
 
-  constructor(send: Send, serverNow: () => number) {
+  /**
+   * @param trace optional per-block latency trace (benchmarks/diagnostics).
+   */
+  constructor(
+    send: Send,
+    serverNow: () => number,
+    private readonly trace: SenderTrace | null = null,
+  ) {
+    const traced: Send = trace
+      ? (payload) => {
+          const seq = peekHeader(payload).seq;
+          trace.sendCall(seq, this.pipeline.sendQ.size);
+          const p = send(payload);
+          p.then(
+            () => trace.sendDone(seq),
+            () => undefined,
+          );
+          return p;
+        }
+      : send;
     this.pipeline = new SendPipeline({
       now: () => performance.now(),
       serverNow,
@@ -109,7 +130,7 @@ export class LosslessSender {
         this.codec.post({ op: 'encode', gen: job.gen, block: job.block }, [
           job.block.samples.buffer,
         ]),
-      send,
+      send: traced,
     });
     this.capture = new CaptureLifecycle<AudioContext>(
       (ctx, onMessage) => LosslessSender.createNode(ctx, onMessage),
@@ -175,6 +196,7 @@ export class LosslessSender {
     this.format = { sampleRate: ctx.sampleRate, bitDepth, channels: 0 };
     this.last = { t: performance.now(), bytes: 0, raw: 0, busy: 0 };
     this.statsTimer ??= setInterval(() => this.publish(), STATS_INTERVAL_MS);
+    this.trace?.noteContext(ctx);
     this.stats.set({
       active: true,
       sampleRate: ctx.sampleRate,
@@ -204,6 +226,15 @@ export class LosslessSender {
     }
     this.format.channels = data.channels;
     const before = this.pipeline.log.current;
+    const seq = this.pipeline.nextSeq;
+    if (this.trace) {
+      const p = this.pipeline;
+      this.trace.captured(seq, ctx, data.frame, frames, {
+        encode: p.encodeQ.size,
+        send: p.sendQ.size,
+        oldestMs: Math.max(p.encodeQ.snapshot().oldestAgeMs, p.sendQ.snapshot().oldestAgeMs),
+      });
+    }
     this.pipeline.capture(
       data.samples,
       data.channels,
@@ -212,11 +243,14 @@ export class LosslessSender {
       data.frame,
       data.gapBefore,
     );
+    this.trace?.admitted(seq, this.pipeline.lastAdmittedSeq === seq);
     if (this.pipeline.log.current !== before) this.publish(); // state change: report immediately
   }
 
   private onReply(reply: CodecReply): void {
     this.busyMs += reply.busyMs;
+    if (reply.op === 'encoded' && reply.gen === this.pipeline.generation)
+      this.trace?.encoded(reply.seq, reply.busyMs);
     if (reply.op === 'encoded') this.pipeline.encoded(reply.gen, reply.seq, reply.payload);
     else if (reply.op === 'error') this.pipeline.encodeFailed(reply.gen, reply.seq);
   }

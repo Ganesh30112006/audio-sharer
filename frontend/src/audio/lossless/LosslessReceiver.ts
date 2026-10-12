@@ -4,6 +4,7 @@ import { createStore, type Store } from '../../utils/store';
 import { peekHeader, type BlockHeader } from './codec';
 import { CodecClient } from './codecClient';
 import type { CodecReply } from './codecWorker';
+import type { ReceiverTrace } from './latencyTrace';
 import { ReceivePipeline } from './pipeline';
 
 export interface LosslessReceiverStats {
@@ -147,6 +148,8 @@ export class LosslessReceiver {
   constructor(
     serverNow: () => number,
     private readonly observer?: (meta: BlockHeader, pcm: Float32Array) => void,
+    /** Optional per-block latency trace (benchmarks/diagnostics). */
+    private readonly trace: ReceiverTrace | null = null,
   ) {
     this.pipeline = new ReceivePipeline({
       now: () => performance.now(),
@@ -173,6 +176,14 @@ export class LosslessReceiver {
 
   push(payload: Uint8Array): void {
     if (this.disposed) return;
+    if (this.trace) {
+      try {
+        const h = peekHeader(payload);
+        this.trace.received(h.seq, h.firstFrame, h.frames);
+      } catch {
+        // corrupt: counted by the pipeline below
+      }
+    }
     if (this.building) {
       // Bounded while the playback graph is (re)built for a new format.
       if (this.pending.length < 100) this.pending.push(payload.slice());
@@ -202,6 +213,7 @@ export class LosslessReceiver {
       return;
     }
     const accepted = this.pipeline.receive(payload);
+    this.trace?.accepted(meta.seq, !!accepted, this.pipeline.decodeQ.size);
     if (accepted) {
       this.bytes += payload.length;
       this.deliveredFrames += accepted.frames;
@@ -222,8 +234,11 @@ export class LosslessReceiver {
     if (!f || f.sampleRate !== reply.sampleRate || f.channels !== reply.channels) return;
     this.decodedFrames += job.meta.frames;
     this.observer?.(job.meta, reply.pcm);
+    this.trace?.decoded(job.meta.seq, reply.busyMs, this.ctx);
     if (job.resetBefore) this.node.port.postMessage({ type: 'reset' });
-    this.node.port.postMessage({ type: 'pcm', pcm: reply.pcm }, [reply.pcm.buffer]);
+    this.node.port.postMessage({ type: 'pcm', pcm: reply.pcm, seq: job.meta.seq }, [
+      reply.pcm.buffer,
+    ]);
   }
 
   private onWorklet(
@@ -244,6 +259,8 @@ export class LosslessReceiver {
         this.outageStart = now;
       }
       this.publish();
+    } else if (msg.type === 'trace') {
+      this.trace?.worklet((msg as unknown as { items: Float64Array }).items);
     } else if (msg.type === 'stats') {
       this.stats.set({
         bufferMs: Math.round(msg.bufferMs ?? 0),
@@ -307,6 +324,7 @@ export class LosslessReceiver {
         channels: first.channels,
         targetMs: this.targetMs,
         maxMs: 1500,
+        trace: !!this.trace,
         adaptive: this.adaptive,
         minMs: LOSSLESS_MIN_TARGET_MS,
       },
@@ -319,6 +337,7 @@ export class LosslessReceiver {
     node.port.onmessage = (e: MessageEvent) => this.onWorklet(e.data);
     this.ctx = ctx;
     this.node = node;
+    this.trace?.noteContext(ctx);
     this.dest = dest;
     this.format = {
       sampleRate: first.sampleRate,

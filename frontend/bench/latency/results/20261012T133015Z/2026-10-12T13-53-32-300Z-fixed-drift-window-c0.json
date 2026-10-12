@@ -1,0 +1,308 @@
+{
+  "variant": "fixed-drift-window",
+  "contention": 0,
+  "seconds": 120,
+  "startedAt": "2026-10-12T13:53:32.300Z",
+  "machine": {
+    "cpus": 4,
+    "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "loadAvg1Before": 1.73,
+    "loadAvg1After": 0.85,
+    "browser": "chromium 141.0.7390.37"
+  },
+  "analysis": {
+    "blocks": {
+      "traced": 12172,
+      "analysed": 11374,
+      "notAdmitted": 0,
+      "neverPlayed": 0
+    },
+    "outages": {
+      "count": 1,
+      "totalMs": 32,
+      "recoveryMs": {
+        "n": 1,
+        "min": 32,
+        "p50": 32,
+        "p95": 32,
+        "p99": 32,
+        "max": 32,
+        "mean": 32
+      }
+    },
+    "stages": {
+      "formation": {
+        "n": 11374,
+        "min": 10,
+        "p50": 10,
+        "p95": 10,
+        "p99": 10,
+        "max": 10,
+        "mean": 10
+      },
+      "captureToPage": {
+        "n": 11374,
+        "min": 0.07,
+        "p50": 6.83,
+        "p95": 236.13,
+        "p99": 318,
+        "max": 334.53,
+        "mean": 23.84
+      },
+      "encodeWait": {
+        "n": 11374,
+        "min": 0,
+        "p50": 0.2,
+        "p95": 0.4,
+        "p99": 1.6,
+        "max": 64.5,
+        "mean": 0.25
+      },
+      "encode": {
+        "n": 11374,
+        "min": 0,
+        "p50": 0,
+        "p95": 0.1,
+        "p99": 0.1,
+        "max": 1.6,
+        "mean": 0.02
+      },
+      "sendCall": {
+        "n": 11374,
+        "min": 0,
+        "p50": 0.1,
+        "p95": 0.2,
+        "p99": 0.3,
+        "max": 14.4,
+        "mean": 0.13
+      },
+      "transport": {
+        "n": 11374,
+        "min": 1.45,
+        "p50": 1.75,
+        "p95": 2.45,
+        "p99": 4.25,
+        "max": 204.75,
+        "mean": 2
+      },
+      "decodeWait": {
+        "n": 11374,
+        "min": 0,
+        "p50": 0.2,
+        "p95": 0.4,
+        "p99": 1.4,
+        "max": 59.9,
+        "mean": 0.24
+      },
+      "decode": {
+        "n": 11374,
+        "min": 0,
+        "p50": 0,
+        "p95": 0.1,
+        "p99": 0.2,
+        "max": 3.3,
+        "mean": 0.04
+      },
+      "pageToWorklet": {
+        "n": 11374,
+        "min": -321.33,
+        "p50": -2.13,
+        "p95": -0.43,
+        "p99": -0.13,
+        "max": 0,
+        "mean": -14.87
+      },
+      "buffer": {
+        "n": 11374,
+        "min": 9.37,
+        "p50": 43.9,
+        "p95": 70.98,
+        "p99": 76.83,
+        "max": 78.92,
+        "mean": 47.12
+      }
+    },
+    "pipeline": {
+      "n": 11374,
+      "min": -22.17,
+      "p50": 60.37,
+      "p95": 89.57,
+      "p99": 301.18,
+      "max": 305.6,
+      "mean": 68.63
+    },
+    "cushion": {
+      "atArrival": {
+        "n": 11374,
+        "min": 1.08,
+        "p50": 43.9,
+        "p95": 70.96,
+        "p99": 76.77,
+        "max": 78.92,
+        "mean": 47.1
+      },
+      "min10s": {
+        "n": 11,
+        "min": 1.08,
+        "p50": 31.77,
+        "p95": 60.69,
+        "p99": 60.69,
+        "max": 60.69,
+        "mean": 27.98
+      }
+    },
+    "clockUncertaintyMs": 7.25,
+    "outputLatencyReportedMs": {
+      "host": 40.02,
+      "listener": 40.02
+    },
+    "queues": {
+      "encodeQueueBlocks": {
+        "n": 11374,
+        "min": 0,
+        "p50": 0,
+        "p95": 1,
+        "p99": 1,
+        "max": 2,
+        "mean": 0.05
+      },
+      "sendQueueBlocks": {
+        "n": 11374,
+        "min": 1,
+        "p50": 1,
+        "p95": 1,
+        "p99": 1,
+        "max": 1,
+        "mean": 1
+      },
+      "oldestQueuedMs": {
+        "n": 11374,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0.1,
+        "max": 62,
+        "mean": 0.02
+      },
+      "decodeQueueBlocks": {
+        "n": 11374,
+        "min": 1,
+        "p50": 1,
+        "p95": 2,
+        "p99": 2,
+        "max": 5,
+        "mean": 1.05
+      },
+      "targetMs": {
+        "n": 11374,
+        "min": 42.33,
+        "p50": 52.33,
+        "p95": 82.33,
+        "p99": 82.33,
+        "max": 82.33,
+        "mean": 55.06
+      }
+    },
+    "jitter": {
+      "interArrivalDev": {
+        "n": 11976,
+        "min": 0,
+        "p50": 0.2,
+        "p95": 9.9,
+        "p99": 10.3,
+        "max": 203,
+        "mean": 1.5
+      },
+      "bunchedShare": 0.053,
+      "listenerArrivalSpread10s": {
+        "n": 11,
+        "min": 13.6,
+        "p50": 19.3,
+        "p95": 367.5,
+        "p99": 367.5,
+        "max": 367.5,
+        "mean": 73.87
+      },
+      "hostCaptureSpread10s": {
+        "n": 11,
+        "min": 12.4,
+        "p50": 14.4,
+        "p95": 351.3,
+        "p99": 351.3,
+        "max": 351.3,
+        "mean": 65.32
+      },
+      "workletArrivalSpread10s": {
+        "n": 11,
+        "min": 12.67,
+        "p50": 18.67,
+        "p95": 64.67,
+        "p99": 64.67,
+        "max": 64.67,
+        "mean": 27.52
+      }
+    },
+    "longTasks": {
+      "host": {
+        "count": 3,
+        "totalMs": 4747
+      },
+      "listener": {
+        "count": 1,
+        "totalMs": 59
+      }
+    },
+    "tail": {
+      "formation": 10,
+      "captureToPage": 237.91,
+      "encodeWait": 0.23,
+      "encode": 0.02,
+      "sendCall": 0.12,
+      "transport": 1.81,
+      "decodeWait": 0.2,
+      "decode": 0.04,
+      "pageToWorklet": -1.93,
+      "buffer": 55.14
+    },
+    "lowCushion": [
+      {
+        "tSec": 94.8,
+        "cushionMs": 1.1,
+        "workletGapMs": 61.3,
+        "excess": {
+          "captureToPage": -3.8,
+          "transport": 203,
+          "decodeWait": 59.3,
+          "pageToWorklet": -210.6,
+          "buffer": -24.1
+        }
+      }
+    ]
+  },
+  "onsetSameMachineMs": {
+    "n": 119,
+    "min": 40.8,
+    "p50": 60.7,
+    "p95": 90.7,
+    "p99": 91.1,
+    "max": 91.4,
+    "mean": 61.11
+  },
+  "listener": {
+    "outages": "1",
+    "lastRecovery": "163 ms",
+    "silence": "0.03 s",
+    "announcedGaps": "0",
+    "unannouncedGaps": "0",
+    "clockCorrections": "3120",
+    "bufferTarget": "77 ms (jitter 22 ms, stall memory 50 ms)"
+  },
+  "host": {
+    "interruptions": "0",
+    "audioNotSent": "0.00 s"
+  },
+  "memory": {
+    "hostHeapMB": 20.1,
+    "listenerHeapMB": 10.7
+  }
+}
