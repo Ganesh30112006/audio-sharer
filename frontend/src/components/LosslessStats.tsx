@@ -37,19 +37,24 @@ export function LosslessStats(
   if (isSender) {
     const t = s as LosslessSenderStats;
     interrupted = t.state === 'interrupted';
-    if (t.interruption) banner = `Stream interrupted: ${CAUSE[t.interruption.cause] ?? t.interruption.cause}.`;
+    if (t.interruption)
+      banner = `Stream interrupted: ${CAUSE[t.interruption.cause] ?? t.interruption.cause}.`;
     rows.push(
       ['Compression', `${Math.round(t.ratio * 100)}% of raw PCM`],
       ['Send queue', `${t.sendQueueBlocks} blocks / ${t.sendQueueKB} KB`],
       ['Oldest queued', `${t.oldestAgeMs} ms`],
       ['Interruptions', String(t.interruptions)],
       ['Audio not sent', `${sec(t.droppedFrames, t.sampleRate)} s`],
-      ['Encoder load', `${Math.round(t.encoderUtilization * 100)}%${t.offMainThread ? ' (worker)' : ' (main thread)'}`],
+      [
+        'Encoder load',
+        `${Math.round(t.encoderUtilization * 100)}%${t.offMainThread ? ' (worker)' : ' (main thread)'}`,
+      ],
     );
   } else {
     const r = s as LosslessReceiverStats;
     interrupted = r.outages > 0 && r.bufferMs === 0;
-    if (r.unexpectedGaps > 0) banner = `${r.unexpectedGaps} unannounced gap(s) detected — continuity was broken.`;
+    if (r.unexpectedGaps > 0)
+      banner = `${r.unexpectedGaps} unannounced gap(s) detected — continuity was broken.`;
     rows.push(
       ['Buffer', `${r.bufferMs} ms`],
       ['Outages', String(r.outages)],
@@ -60,7 +65,10 @@ export function LosslessStats(
       ['Silence inserted', `${sec(r.silenceFrames, r.sampleRate)} s`],
       ['Clock corrections', String(r.clockCorrections)],
       ['Transit', r.transitMs === null ? '—' : `${r.transitMs} ms`],
-      ['Decoder load', `${Math.round(r.decoderUtilization * 100)}%${r.offMainThread ? ' (worker)' : ' (main thread)'}`],
+      [
+        'Decoder load',
+        `${Math.round(r.decoderUtilization * 100)}%${r.offMainThread ? ' (worker)' : ' (main thread)'}`,
+      ],
     );
   }
   return (
@@ -69,13 +77,21 @@ export function LosslessStats(
         <h2 id="lossless-heading">
           <Lock size={18} aria-hidden /> Lossless stream
         </h2>
-        <span className={`pill ${interrupted || banner ? 'pill-warning' : 'pill-success'}`} data-testid="lossless-state">
+        <span
+          className={`pill ${interrupted || banner ? 'pill-warning' : 'pill-success'}`}
+          data-testid="lossless-state"
+        >
           {interrupted ? 'Interrupted' : 'Bit-exact'}
         </span>
       </div>
       {banner && (
-        <p className="small row" role="alert" style={{ color: 'var(--warning)', flexWrap: 'nowrap' }}>
-          <AlertTriangle size={16} aria-hidden /> {banner} Audio resumes automatically; nothing is spliced across the gap.
+        <p
+          className="small row"
+          role="alert"
+          style={{ color: 'var(--warning)', flexWrap: 'nowrap' }}
+        >
+          <AlertTriangle size={16} aria-hidden /> {banner} Audio resumes automatically; nothing is
+          spliced across the gap.
         </p>
       )}
       <dl className="diag">

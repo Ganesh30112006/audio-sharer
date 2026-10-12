@@ -44,7 +44,9 @@ interface Scenario {
 function musicSample(frame: number, ch: number): number {
   const t = frame / RATE;
   const v =
-    0.3 * Math.sin(2 * Math.PI * 220 * t + ch) + 0.1 * Math.sin(2 * Math.PI * 1763 * t) + 0.002 * Math.sin(frame * 12.9898);
+    0.3 * Math.sin(2 * Math.PI * 220 * t + ch) +
+    0.1 * Math.sin(2 * Math.PI * 1763 * t) +
+    0.002 * Math.sin(frame * 12.9898);
   return Math.round(v * (2 ** (BITS - 1) - 1));
 }
 
@@ -111,7 +113,12 @@ async function simulate(sc: Scenario) {
       });
     });
 
-  const sender = new SendPipeline({ now: () => now, serverNow: () => 1_000_000 + now, encode, send });
+  const sender = new SendPipeline({
+    now: () => now,
+    serverNow: () => 1_000_000 + now,
+    encode,
+    send,
+  });
 
   // ---- decoder + playback ----
   let decFree = 0;
@@ -139,7 +146,12 @@ async function simulate(sc: Scenario) {
       buffered += done.meta.frames;
     });
   };
-  const receiver = new ReceivePipeline({ now: () => now, serverNow: () => 1_000_000 + now, peek: peekHeader, decode });
+  const receiver = new ReceivePipeline({
+    now: () => now,
+    serverNow: () => 1_000_000 + now,
+    peek: peekHeader,
+    decode,
+  });
 
   // ---- capture clock + playback consumption ----
   const total = Math.round((sc.seconds * 1000) / BLOCK_MS);
@@ -206,13 +218,17 @@ async function simulate(sc: Scenario) {
   return { s, r, capturedFrames, deliveredFrames, bitErrors, peaks, outages, everPlayed };
 }
 
-function checkInvariants(res: Awaited<ReturnType<typeof simulate>>, opts: { resets?: boolean } = {}) {
+function checkInvariants(
+  res: Awaited<ReturnType<typeof simulate>>,
+  opts: { resets?: boolean } = {},
+) {
   const { s, r } = res;
   expect(res.bitErrors, 'delivered blocks must be bit-exact').toBe(0);
   if (!opts.resets) {
-    expect(res.deliveredFrames + s.droppedFrames + r.droppedFrames, 'every frame delivered or reported lost').toBe(
-      res.capturedFrames,
-    );
+    expect(
+      res.deliveredFrames + s.droppedFrames + r.droppedFrames,
+      'every frame delivered or reported lost',
+    ).toBe(res.capturedFrames);
   }
   expect(r.unexpectedGaps, 'gaps must be announced').toBe(0);
   const L = DEFAULT_SEND_LIMITS;
@@ -285,7 +301,11 @@ describe('lossless pipeline under load (simulated)', () => {
   it('variable block sizes with huge Rice quotients stay within byte bounds', async () => {
     const spiky = (f: number, ch: number) =>
       f % 997 === 0 ? (ch ? -(2 ** 23) : 2 ** 23 - 1) : musicSample(f, ch);
-    const res = await simulate({ seconds: 20, signal: spiky, link: (t) => (t > 3_000 && t < 12_000 ? 30 : 1000) });
+    const res = await simulate({
+      seconds: 20,
+      signal: spiky,
+      link: (t) => (t > 3_000 && t < 12_000 ? 30 : 1000),
+    });
     checkInvariants(res);
   }, 60_000);
 
@@ -303,11 +323,24 @@ describe('lossless pipeline under load (simulated)', () => {
 describe('receiver continuity checks', () => {
   const mk = () => {
     const decoded: DecodeJob[] = [];
-    const r = new ReceivePipeline({ now: () => 0, serverNow: () => 0, peek: peekHeader, decode: (j) => decoded.push(j) });
+    const r = new ReceivePipeline({
+      now: () => 0,
+      serverNow: () => 0,
+      peek: peekHeader,
+      decode: (j) => decoded.push(j),
+    });
     return { r, decoded };
   };
   const blk = (seq: number, firstFrame: number, discontinuity = false) =>
-    encodeBlock({ seq, sampleRate: RATE, channels: 2, bitDepth: 16, samples: new Int32Array(64 * 2), firstFrame, discontinuity });
+    encodeBlock({
+      seq,
+      sampleRate: RATE,
+      channels: 2,
+      bitDepth: 16,
+      samples: new Int32Array(64 * 2),
+      firstFrame,
+      discontinuity,
+    });
 
   it('treats an unannounced sample-position jump as a gap and resets playback', () => {
     const { r, decoded } = mk();

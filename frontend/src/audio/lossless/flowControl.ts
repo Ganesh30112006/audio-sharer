@@ -149,7 +149,14 @@ export class InterruptionLog {
 
   begin(cause: InterruptionCause, limit: Interruption['limit']): Interruption {
     if (this.current) return this.current;
-    this.current = { cause, limit, startedAt: this.now(), endedAt: null, droppedBlocks: 0, droppedFrames: 0 };
+    this.current = {
+      cause,
+      limit,
+      startedAt: this.now(),
+      endedAt: null,
+      droppedBlocks: 0,
+      droppedFrames: 0,
+    };
     this.total++;
     return this.current;
   }

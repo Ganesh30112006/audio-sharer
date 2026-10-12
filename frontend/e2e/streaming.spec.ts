@@ -10,16 +10,17 @@ import { noiseWav, sineWav } from './wav';
 async function newContext(browser: import('@playwright/test').Browser): Promise<BrowserContext> {
   const ctx = await browser.newContext();
   await ctx.addInitScript(() => {
-    localStorage.setItem(
-      'mc.settings.v1',
-      JSON.stringify({
-        displayName: 'E2E',
-        showDiagnostics: true,
-        bufferMode: 'auto',
-        quality: 'high',
-        transport: 'opus',
-      }),
-    );
+    if (location.protocol.startsWith('http'))
+      localStorage.setItem(
+        'mc.settings.v1',
+        JSON.stringify({
+          displayName: 'E2E',
+          showDiagnostics: true,
+          bufferMode: 'auto',
+          quality: 'high',
+          transport: 'opus',
+        }),
+      );
     // Count peer connections so tests can assert none are leaked or duplicated.
     const Native = window.RTCPeerConnection;
     const w = window as unknown as { __pcs: RTCPeerConnection[] };
@@ -184,7 +185,8 @@ for (const [quality, minKbps, maxKbps] of [
     const listenerCtx = await newContext(browser);
     await hostCtx.addInitScript((q) => {
       const s = JSON.parse(localStorage.getItem('mc.settings.v1') ?? '{}');
-      localStorage.setItem('mc.settings.v1', JSON.stringify({ ...s, quality: q }));
+      if (location.protocol.startsWith('http'))
+        localStorage.setItem('mc.settings.v1', JSON.stringify({ ...s, quality: q }));
     }, quality);
     const host = await hostCtx.newPage();
     const listener = await listenerCtx.newPage();

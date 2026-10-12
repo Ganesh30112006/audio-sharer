@@ -6,9 +6,13 @@ const SCALE = 2 ** (BITS - 1);
 const BLOCK = 8;
 
 /** Deterministic integer sample for (timeline frame, channel, layout). */
-const val = (frame: number, ch: number, layout: number) => ((frame * 31 + ch * 7 + layout * 1000) % 30000) - 15000;
+const val = (frame: number, ch: number, layout: number) =>
+  ((frame * 31 + ch * 7 + layout * 1000) % 30000) - 15000;
 
-type Step = { kind: 'audio'; frames: number; channels: number } | { kind: 'inactive'; frames: number } | { kind: 'skip'; frames: number };
+type Step =
+  | { kind: 'audio'; frames: number; channels: number }
+  | { kind: 'inactive'; frames: number }
+  | { kind: 'skip'; frames: number };
 
 /** Feeds quanta of `quantum` frames following the script; returns emitted blocks and the expected per-frame truth. */
 function run(script: Step[], quantum = 1) {
@@ -29,10 +33,13 @@ function run(script: Step[], quantum = 1) {
         const input = Array.from({ length: channels }, (_, c) =>
           Float32Array.from({ length: len }, (_, i) => val(frame + i, c, channels) / SCALE),
         );
-        for (let i = 0; i < len; i++) truth.set(frame + i, { channels, values: input.map((ch) => Math.round(ch[i]! * SCALE)) });
+        for (let i = 0; i < len; i++)
+          truth.set(frame + i, { channels, values: input.map((ch) => Math.round(ch[i]! * SCALE)) });
         asm.push(input, frame, len);
       } else {
-        if (channels > 0) for (let i = 0; i < len; i++) truth.set(frame + i, { channels, values: Array(channels).fill(0) });
+        if (channels > 0)
+          for (let i = 0; i < len; i++)
+            truth.set(frame + i, { channels, values: Array(channels).fill(0) });
         asm.push(null, frame, len);
       }
       frame += len;
@@ -69,7 +76,8 @@ function verify({ blocks, truth }: ReturnType<typeof run>, expectedGaps: number[
 
 describe('BlockAssembler', () => {
   it('emits full blocks for steady stereo input with any quantum size', () => {
-    for (const q of [1, 3, 8, 128]) verify(run([{ kind: 'audio', frames: 300, channels: 2 }], q), []);
+    for (const q of [1, 3, 8, 128])
+      verify(run([{ kind: 'audio', frames: 300, channels: 2 }], q), []);
   });
 
   it('channel-layout change at every offset within a block never loses or mixes frames', () => {

@@ -24,10 +24,11 @@ async function ctxWithSettings(browser: Browser, name: string): Promise<BrowserC
   const ctx = await browser.newContext();
   await ctx.addInitScript(
     ([n, transport]) => {
-      localStorage.setItem(
-        'mc.settings.v1',
-        JSON.stringify({ displayName: n, showDiagnostics: true, transport }),
-      );
+      if (location.protocol.startsWith('http'))
+        localStorage.setItem(
+          'mc.settings.v1',
+          JSON.stringify({ displayName: n, showDiagnostics: true, transport }),
+        );
     },
     [name, TRANSPORT] as const,
   );

@@ -137,7 +137,9 @@ export class LosslessReceiver {
       serverNow,
       peek: peekHeader,
       decode: (job) =>
-        this.codec.post({ op: 'decode', gen: job.gen, seq: job.meta.seq, payload: job.payload }, [job.payload.buffer]),
+        this.codec.post({ op: 'decode', gen: job.gen, seq: job.meta.seq, payload: job.payload }, [
+          job.payload.buffer,
+        ]),
     });
   }
 
@@ -166,7 +168,12 @@ export class LosslessReceiver {
       return;
     }
     const f = this.format;
-    if (!f || f.sampleRate !== meta.sampleRate || f.channels !== meta.channels || f.bitDepth !== meta.bitDepth) {
+    if (
+      !f ||
+      f.sampleRate !== meta.sampleRate ||
+      f.channels !== meta.channels ||
+      f.bitDepth !== meta.bitDepth
+    ) {
       this.pending.push(payload.slice());
       this.building = this.build(meta).finally(() => {
         this.building = null;
@@ -201,7 +208,9 @@ export class LosslessReceiver {
     this.node.port.postMessage({ type: 'pcm', pcm: reply.pcm }, [reply.pcm.buffer]);
   }
 
-  private onWorklet(msg: { type: string; playing?: boolean } & Partial<LosslessReceiverStats>): void {
+  private onWorklet(
+    msg: { type: string; playing?: boolean } & Partial<LosslessReceiverStats>,
+  ): void {
     if (msg.type === 'state') {
       const now = performance.now();
       if (msg.playing) {
@@ -272,7 +281,12 @@ export class LosslessReceiver {
       numberOfInputs: 0,
       numberOfOutputs: 1,
       outputChannelCount: [first.channels],
-      processorOptions: { channels: first.channels, targetMs: this.targetMs, windowMs: 40, maxMs: 1500 },
+      processorOptions: {
+        channels: first.channels,
+        targetMs: this.targetMs,
+        windowMs: 40,
+        maxMs: 1500,
+      },
     });
     const dest = ctx.createMediaStreamDestination();
     dest.channelCount = first.channels;
@@ -283,7 +297,11 @@ export class LosslessReceiver {
     this.ctx = ctx;
     this.node = node;
     this.dest = dest;
-    this.format = { sampleRate: first.sampleRate, channels: first.channels, bitDepth: first.bitDepth };
+    this.format = {
+      sampleRate: first.sampleRate,
+      channels: first.channels,
+      bitDepth: first.bitDepth,
+    };
     this.pipeline.reset(); // new stream format: fresh sequence tracking
     void ctx.resume();
     this.stats.set({ active: true, ...this.format, offMainThread: this.codec.offMainThread });

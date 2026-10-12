@@ -535,14 +535,16 @@ export function decodeBlock(bytes: Uint8Array): PcmBlock {
   const { channels, bitDepth, frames } = meta;
   const flags = bytes[3]!;
   if (flags & ~KNOWN_FLAGS) throw new CodecError('Unknown flags');
-  if (flags & FLAG_VERBATIM && flags & FLAG_MID_SIDE) throw new CodecError('Invalid flag combination');
+  if (flags & FLAG_VERBATIM && flags & FLAG_MID_SIDE)
+    throw new CodecError('Invalid flag combination');
   const out = new Int32Array(frames * channels);
   const r = new BitReader(bytes, HEADER_BYTES);
 
   if (flags & FLAG_VERBATIM) {
     if (bitDepth === 16 || bitDepth === 24) {
       const bpsBytes = bitDepth / 8;
-      if (bytes.length !== HEADER_BYTES + out.length * bpsBytes) throw new CodecError('Bad block length');
+      if (bytes.length !== HEADER_BYTES + out.length * bpsBytes)
+        throw new CodecError('Bad block length');
       let o = HEADER_BYTES;
       if (bitDepth === 16) {
         for (let i = 0; i < out.length; i++, o += 2)

@@ -47,15 +47,16 @@ for (const { name, bufferMode, impair, transport = 'opus' } of scenarios) {
     for (const c of [hostCtx, listenerCtx]) {
       await c.addInitScript(
         ([mode, t]) => {
-          localStorage.setItem(
-            'mc.settings.v1',
-            JSON.stringify({
-              displayName: 'Probe',
-              bufferMode: mode,
-              showDiagnostics: true,
-              transport: t,
-            }),
-          );
+          if (location.protocol.startsWith('http'))
+            localStorage.setItem(
+              'mc.settings.v1',
+              JSON.stringify({
+                displayName: 'Probe',
+                bufferMode: mode,
+                showDiagnostics: true,
+                transport: t,
+              }),
+            );
         },
         [bufferMode, transport] as const,
       );

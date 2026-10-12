@@ -70,15 +70,16 @@ for (const sc of SCENARIOS) {
       const ctx = await browser.newContext();
       await ctx.addInitScript(
         ([transport, inline]) => {
-          localStorage.setItem(
-            'mc.settings.v1',
-            JSON.stringify({
-              displayName: 'CPU',
-              transport,
-              quality: 'studio',
-              showDiagnostics: false,
-            }),
-          );
+          if (location.protocol.startsWith('http'))
+            localStorage.setItem(
+              'mc.settings.v1',
+              JSON.stringify({
+                displayName: 'CPU',
+                transport,
+                quality: 'studio',
+                showDiagnostics: false,
+              }),
+            );
           if (inline) (window as unknown as { Worker?: unknown }).Worker = undefined;
         },
         [sc.transport, !!sc.inlineCodec] as const,

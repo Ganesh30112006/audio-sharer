@@ -55,7 +55,13 @@ export function handle(req: CodecRequest): { reply: CodecReply; transfer: Transf
     };
   } catch (err) {
     return {
-      reply: { op: 'error', gen: req.gen, seq, message: (err as Error).message, busyMs: performance.now() - t0 },
+      reply: {
+        op: 'error',
+        gen: req.gen,
+        seq,
+        message: (err as Error).message,
+        busyMs: performance.now() - t0,
+      },
       transfer: [],
     };
   }

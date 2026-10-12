@@ -16,13 +16,20 @@
  */
 export interface CaptureNodeHandle {
   /** Sends a control message to the capture processor. */
-  post(msg: { cmd: 'start'; gen: number; bitDepth: number; blockFrames: number } | { cmd: 'stop'; gen: number }): void;
+  post(
+    msg:
+      | { cmd: 'start'; gen: number; bitDepth: number; blockFrames: number }
+      | { cmd: 'stop'; gen: number },
+  ): void;
   connect(source: AudioNode): void;
   disconnect(source: AudioNode): void;
   dispose(): void;
 }
 
-export type NodeFactory<Ctx> = (ctx: Ctx, onMessage: (data: unknown) => void) => Promise<CaptureNodeHandle>;
+export type NodeFactory<Ctx> = (
+  ctx: Ctx,
+  onMessage: (data: unknown) => void,
+) => Promise<CaptureNodeHandle>;
 
 interface Active<Ctx> {
   gen: number;
@@ -36,6 +43,13 @@ export class CaptureLifecycle<Ctx extends object> {
   private nodes = new Map<Ctx, Promise<CaptureNodeHandle>>();
   private ready = new Map<Ctx, CaptureNodeHandle>();
   private active: Active<Ctx> | null = null;
+  /**
+   * The source currently feeding a capture node. It stays connected across
+   * stop()/start() (the node simply idles between generations) so the node's
+   * input is never re-established mid-stream; it changes only when a
+   * different source starts, and is released on forget()/dispose().
+   */
+  private connected: { ctx: Ctx; source: AudioNode } | null = null;
 
   constructor(
     private readonly factory: NodeFactory<Ctx>,
@@ -60,7 +74,12 @@ export class CaptureLifecycle<Ctx extends object> {
    * Starts capturing `source` into a new generation. Resolves with the
    * generation number, or null if a later start()/stop() superseded it.
    */
-  async start(ctx: Ctx, source: AudioNode, bitDepth: number, blockFrames: number): Promise<number | null> {
+  async start(
+    ctx: Ctx,
+    source: AudioNode,
+    bitDepth: number,
+    blockFrames: number,
+  ): Promise<number | null> {
     this.stop();
     const gen = ++this.gen;
     let pending = this.nodes.get(ctx);
@@ -80,7 +99,15 @@ export class CaptureLifecycle<Ctx extends object> {
       throw err;
     }
     if (gen !== this.gen) return null; // superseded while awaiting: attach nothing
-    handle.connect(source);
+    const c = this.connected;
+    if (c && (c.source !== source || c.ctx !== ctx)) {
+      this.ready.get(c.ctx)?.disconnect(c.source);
+      this.connected = null;
+    }
+    if (!this.connected) {
+      handle.connect(source);
+      this.connected = { ctx, source };
+    }
     handle.post({ cmd: 'start', gen, bitDepth, blockFrames });
     this.active = { gen, ctx, source, bitDepth };
     return gen;
@@ -91,16 +118,24 @@ export class CaptureLifecycle<Ctx extends object> {
     this.gen++;
     const a = this.active;
     this.active = null;
-    if (!a) return;
-    const h = this.ready.get(a.ctx);
-    if (!h) return;
-    h.post({ cmd: 'stop', gen: a.gen });
-    h.disconnect(a.source);
+    if (a) this.ready.get(a.ctx)?.post({ cmd: 'stop', gen: a.gen });
+  }
+
+  /** Sources currently connected to a capture node (never more than one). */
+  get connectedSources(): number {
+    return this.connected ? 1 : 0;
+  }
+
+  private release(): void {
+    const c = this.connected;
+    if (c) this.ready.get(c.ctx)?.disconnect(c.source);
+    this.connected = null;
   }
 
   /** Releases every node (e.g. when the owner is disposed or a context closes). */
   async dispose(): Promise<void> {
     this.stop();
+    this.release();
     const all = [...this.nodes.values()];
     this.nodes.clear();
     this.ready.clear();
@@ -126,6 +161,7 @@ export class CaptureLifecycle<Ctx extends object> {
   /** Drops the cached node for a context that is being closed. */
   forget(ctx: Ctx): void {
     if (this.active?.ctx === ctx) this.stop();
+    if (this.connected?.ctx === ctx) this.release();
     const p = this.nodes.get(ctx);
     this.nodes.delete(ctx);
     this.ready.delete(ctx);

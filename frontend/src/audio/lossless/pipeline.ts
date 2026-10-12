@@ -11,7 +11,13 @@
  * receiver resets playback cleanly instead of splicing across the gap.
  */
 import type { BlockHeader, PcmBlock } from './codec';
-import { BoundedQueue, InterruptionLog, type Interruption, type QueueLimits, type QueueSnapshot } from './flowControl';
+import {
+  BoundedQueue,
+  InterruptionLog,
+  type Interruption,
+  type QueueLimits,
+  type QueueSnapshot,
+} from './flowControl';
 
 /** ~1 s of audio, 2 MB, 750 ms age: bounded latency before declaring an interruption. */
 export const DEFAULT_SEND_LIMITS = {
@@ -27,7 +33,7 @@ export const DEFAULT_RECEIVE_LIMITS: QueueLimits = {
 };
 
 /** Signed distance a - b for 32-bit wrapping counters. */
-export const seqDiff = (a: number, b: number) => ((a - b) | 0);
+export const seqDiff = (a: number, b: number) => (a - b) | 0;
 
 export interface EncodeJob {
   gen: number;
@@ -187,7 +193,12 @@ export class SendPipeline {
    * final partial block flushed after stop(), or a stale producer). It was
    * captured, so it is counted — and it is refused with an explicit record.
    */
-  rejectCapture(frames: number, generation: number, firstFrame: number, cause: 'session-reset' | 'stale-capture'): void {
+  rejectCapture(
+    frames: number,
+    generation: number,
+    firstFrame: number,
+    cause: 'session-reset' | 'stale-capture',
+  ): void {
     this.blocksCaptured++;
     this.capturedFrames += frames;
     const wasOpen = !!this.log.current;
@@ -278,7 +289,8 @@ export class SendPipeline {
       bytesSent: this.bytesSent,
       rawBytesSent: this.rawBytesSent,
       interruptions: this.log.total,
-      interruptedMs: this.log.totalMs + (this.log.current ? this.io.now() - this.log.current.startedAt : 0),
+      interruptedMs:
+        this.log.totalMs + (this.log.current ? this.io.now() - this.log.current.startedAt : 0),
       droppedFrames: this.log.totalDroppedFrames,
       transportErrors: this.transportErrors,
       current: this.log.current,
@@ -324,7 +336,15 @@ export class ReceivePipeline {
   private lastSeq: number | null = null;
   private expectedFrame: number | null = null;
   private resetNext = true;
-  private counters = { received: 0, decoded: 0, duplicates: 0, stale: 0, announced: 0, unexpected: 0, corrupt: 0 };
+  private counters = {
+    received: 0,
+    decoded: 0,
+    duplicates: 0,
+    stale: 0,
+    announced: 0,
+    unexpected: 0,
+    corrupt: 0,
+  };
   private lastTransit: number | null = null;
   private maxTransit: number | null = null;
   private pendingMeta = new Map<number, DecodeJob>();
@@ -372,7 +392,9 @@ export class ReceivePipeline {
         if (!meta.discontinuity) {
           this.counters.unexpected++;
           this.log.begin('upstream-gap', null);
-          this.log.drop(this.expectedFrame !== null ? (meta.firstFrame - this.expectedFrame) >>> 0 : 0);
+          this.log.drop(
+            this.expectedFrame !== null ? (meta.firstFrame - this.expectedFrame) >>> 0 : 0,
+          );
           this.log.end();
         }
         this.resetNext = true;
@@ -466,7 +488,8 @@ export class ReceivePipeline {
       unexpectedGaps: c.unexpected,
       corrupt: c.corrupt,
       interruptions: this.log.total,
-      interruptedMs: this.log.totalMs + (this.log.current ? this.io.now() - this.log.current.startedAt : 0),
+      interruptedMs:
+        this.log.totalMs + (this.log.current ? this.io.now() - this.log.current.startedAt : 0),
       droppedFrames: this.log.totalDroppedFrames,
       lastTransitMs: this.lastTransit,
       maxTransitMs: this.maxTransit,

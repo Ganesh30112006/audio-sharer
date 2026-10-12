@@ -57,13 +57,16 @@ jobs:
       - name: Start LiveKit SFU
         run: |
           curl -sSL "https://github.com/livekit/livekit/releases/download/v${LIVEKIT_VERSION}/livekit_${LIVEKIT_VERSION}_linux_amd64.tar.gz" | tar xz -C /tmp
-          /tmp/livekit-server --config deploy/livekit.dev.yaml > /tmp/livekit.log 2>&1 &
+          # Advertise the runner's real IP: newer Chromium fails ICE to a loopback-only candidate.
+          /tmp/livekit-server --config deploy/livekit.ci.yaml --node-ip "$(hostname -I | awk '{print $1}')" > /tmp/livekit.log 2>&1 &
       - run: pip install -r backend/requirements.txt
       - working-directory: frontend
         run: npm ci && npx playwright install --with-deps chromium
       - working-directory: frontend
-        run: npx playwright test e2e/streaming.spec.ts e2e/lossless.spec.ts e2e/latency.spec.ts e2e/perf.spec.ts
+        # Correctness suites. Benchmarks (latency, perf, cpu, hires-throughput) are run
+        # manually — see README "Performance measurements".
+        run: npx playwright test e2e/streaming.spec.ts e2e/lossless.spec.ts e2e/harness.spec.ts
         env:
-          SOAK_MINUTES: '3'
+          LIFECYCLE_SOAK_SECONDS: '8'
       - if: failure()
         run: cat /tmp/livekit.log

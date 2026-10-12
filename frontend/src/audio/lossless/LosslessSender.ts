@@ -105,17 +105,24 @@ export class LosslessSender {
     this.pipeline = new SendPipeline({
       now: () => performance.now(),
       serverNow,
-      encode: (job) => this.codec.post({ op: 'encode', gen: job.gen, block: job.block }, [job.block.samples.buffer]),
+      encode: (job) =>
+        this.codec.post({ op: 'encode', gen: job.gen, block: job.block }, [
+          job.block.samples.buffer,
+        ]),
       send,
     });
     this.capture = new CaptureLifecycle<AudioContext>(
       (ctx, onMessage) => LosslessSender.createNode(ctx, onMessage),
-      (data, ctx) => this.onCaptured(data as CapturedBlock & { gen: number; diag?: CaptureDiag }, ctx),
+      (data, ctx) =>
+        this.onCaptured(data as CapturedBlock & { gen: number; diag?: CaptureDiag }, ctx),
     );
   }
 
   /** One long-lived capture node per context (positions share one timeline). */
-  private static async createNode(ctx: AudioContext, onMessage: (data: unknown) => void): Promise<CaptureNodeHandle> {
+  private static async createNode(
+    ctx: AudioContext,
+    onMessage: (data: unknown) => void,
+  ): Promise<CaptureNodeHandle> {
     let loaded = LosslessSender.modules.get(ctx);
     if (!loaded) {
       loaded = ctx.audioWorklet.addModule(captureWorkletUrl);
@@ -158,15 +165,28 @@ export class LosslessSender {
     if (this.capture.isActive(ctx, source, bitDepth)) return;
     this.stop();
     this.capture.prune((c) => c.state === 'closed');
-    const gen = await this.capture.start(ctx, source, bitDepth, blockFramesFor(ctx.sampleRate, bitDepth));
+    const gen = await this.capture.start(
+      ctx,
+      source,
+      bitDepth,
+      blockFramesFor(ctx.sampleRate, bitDepth),
+    );
     if (gen === null) return; // superseded by a later start()/stop()
     this.format = { sampleRate: ctx.sampleRate, bitDepth, channels: 0 };
     this.last = { t: performance.now(), bytes: 0, raw: 0, busy: 0 };
     this.statsTimer ??= setInterval(() => this.publish(), STATS_INTERVAL_MS);
-    this.stats.set({ active: true, sampleRate: ctx.sampleRate, bitDepth, offMainThread: this.codec.offMainThread });
+    this.stats.set({
+      active: true,
+      sampleRate: ctx.sampleRate,
+      bitDepth,
+      offMainThread: this.codec.offMainThread,
+    });
   }
 
-  private onCaptured(data: CapturedBlock & { gen: number; diag?: CaptureDiag }, ctx: AudioContext): void {
+  private onCaptured(
+    data: CapturedBlock & { gen: number; diag?: CaptureDiag },
+    ctx: AudioContext,
+  ): void {
     if (data.diag) {
       this.captureDiag = data.diag;
       return;
@@ -174,12 +194,24 @@ export class LosslessSender {
     const frames = data.samples.length / data.channels;
     // Pipeline boundary: only the active generation's blocks are admitted.
     if (data.gen !== this.capture.currentGeneration || ctx !== this.capture.activeContext) {
-      this.pipeline.rejectCapture(frames, data.gen, data.frame, data.gen === this.lastStoppedGen ? 'session-reset' : 'stale-capture');
+      this.pipeline.rejectCapture(
+        frames,
+        data.gen,
+        data.frame,
+        data.gen === this.lastStoppedGen ? 'session-reset' : 'stale-capture',
+      );
       return;
     }
     this.format.channels = data.channels;
     const before = this.pipeline.log.current;
-    this.pipeline.capture(data.samples, data.channels, ctx.sampleRate, this.format.bitDepth, data.frame, data.gapBefore);
+    this.pipeline.capture(
+      data.samples,
+      data.channels,
+      ctx.sampleRate,
+      this.format.bitDepth,
+      data.frame,
+      data.gapBefore,
+    );
     if (this.pipeline.log.current !== before) this.publish(); // state change: report immediately
   }
 

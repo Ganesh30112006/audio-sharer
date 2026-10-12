@@ -40,7 +40,8 @@ export default defineConfig({
     },
     {
       // Production build: measurements must not include React dev-mode overhead.
-      command: 'E2E_HARNESS=1 npx vite build && npx vite preview --host 127.0.0.1 --port 5173 --strictPort',
+      command:
+        'E2E_HARNESS=1 npx vite build && npx vite preview --host 127.0.0.1 --port 5173 --strictPort',
       url: 'http://127.0.0.1:5173',
       reuseExistingServer: true,
     },

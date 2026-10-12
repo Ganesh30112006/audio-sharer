@@ -11,7 +11,13 @@ pids=()
 cleanup() { kill "${pids[@]}" 2>/dev/null || true; }
 trap cleanup EXIT INT TERM
 
-"$LIVEKIT_BIN" --config "$ROOT/deploy/livekit.dev.yaml" & pids+=($!)
+# LAN mode (phones/other PCs on the same network): LAN=1 ./scripts/dev.sh
+if [ "${LAN:-0}" = "1" ]; then
+  NODE_IP="${NODE_IP:-$(hostname -I 2>/dev/null | awk '{print $1}')}"
+  "$LIVEKIT_BIN" --config "$ROOT/deploy/livekit.ci.yaml" --node-ip "$NODE_IP" & pids+=($!)
+else
+  "$LIVEKIT_BIN" --config "$ROOT/deploy/livekit.dev.yaml" & pids+=($!)
+fi
 (cd "$ROOT/backend" && "$PY" -m uvicorn app.main:app --port 8000 --reload) & pids+=($!)
 (cd "$ROOT/frontend" && npx vite --port 5173) & pids+=($!)
 

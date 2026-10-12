@@ -94,7 +94,12 @@ export class BlockAssembler {
   }
 
   private flush(samples: Int32Array<ArrayBuffer>): void {
-    this.emit({ samples, channels: this.channels, frame: this.blockStart >>> 0, gapBefore: this.pendingGap });
+    this.emit({
+      samples,
+      channels: this.channels,
+      frame: this.blockStart >>> 0,
+      gapBefore: this.pendingGap,
+    });
     this.pendingGap = 0;
     this.buf = null;
     this.filled = 0;

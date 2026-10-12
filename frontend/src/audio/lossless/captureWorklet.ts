@@ -7,11 +7,21 @@
  */
 import { BlockAssembler, type CapturedBlock } from './captureAssembler';
 
-type Control = { cmd: 'start'; gen: number; bitDepth: number; blockFrames: number } | { cmd: 'stop'; gen: number };
+const SETTLE_QUANTA = 2;
+
+type Control =
+  | { cmd: 'start'; gen: number; bitDepth: number; blockFrames: number }
+  | { cmd: 'stop'; gen: number };
 
 class PcmCaptureProcessor extends AudioWorkletProcessor {
   private asm: BlockAssembler | null = null;
   private gen = 0;
+  /**
+   * Render quanta to discard at the start of a generation. After a graph
+   * change Chromium can hand a node one quantum of stale input; these frames
+   * never become captured data (the generation simply starts after them).
+   */
+  private settle = 0;
   private lastReport = 0;
   private totals = { quanta: 0, unseenFrames: 0, inactiveQuanta: 0, layoutChanges: 0 };
 
@@ -23,6 +33,7 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
         this.finish();
         const gen = m.gen;
         this.gen = gen;
+        this.settle = SETTLE_QUANTA;
         this.asm = new BlockAssembler(m.blockFrames, m.bitDepth, (b: CapturedBlock) =>
           this.port.postMessage({ ...b, gen }, [b.samples.buffer]),
         );
@@ -46,7 +57,8 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
 
   process(inputs: Float32Array[][]): boolean {
     const a = this.asm;
-    if (a) {
+    if (a && this.settle > 0) this.settle--;
+    else if (a) {
       const input = inputs[0] ?? null;
       a.push(input, currentFrame, input?.[0]?.length ?? 128);
     }

@@ -13,12 +13,13 @@ for (const rate of [96_000, 192_000]) {
     const { wav } = musicWav(40, rate, 24);
     const mk = async () => {
       const ctx = await browser.newContext();
-      await ctx.addInitScript(() =>
-        localStorage.setItem(
-          'mc.settings.v1',
-          JSON.stringify({ displayName: 'HR', transport: 'lossless' }),
-        ),
-      );
+      await ctx.addInitScript(() => {
+        if (location.protocol.startsWith('http'))
+          localStorage.setItem(
+            'mc.settings.v1',
+            JSON.stringify({ displayName: 'HR', transport: 'lossless' }),
+          );
+      });
       return ctx;
     };
     const hostCtx = await mk();

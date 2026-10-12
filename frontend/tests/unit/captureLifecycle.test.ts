@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CaptureLifecycle, type CaptureNodeHandle } from '../../src/audio/lossless/captureLifecycle';
+import {
+  CaptureLifecycle,
+  type CaptureNodeHandle,
+} from '../../src/audio/lossless/captureLifecycle';
 import { SendPipeline } from '../../src/audio/lossless/pipeline';
 
 function deferred<T>() {
@@ -25,9 +28,14 @@ function fakeNode() {
       disposed = true;
     },
   };
-  return { handle, posts, connected, get disposed() {
-    return disposed;
-  } };
+  return {
+    handle,
+    posts,
+    connected,
+    get disposed() {
+      return disposed;
+    },
+  };
 }
 
 const ctxA = { id: 'A' };
@@ -51,7 +59,10 @@ describe('CaptureLifecycle', () => {
   it('stop() during start(): nothing attaches after cancellation', async () => {
     const d = deferred<CaptureNodeHandle>();
     const node = fakeNode();
-    const lc = new CaptureLifecycle<object>(() => d.promise, () => undefined);
+    const lc = new CaptureLifecycle<object>(
+      () => d.promise,
+      () => undefined,
+    );
     const started = lc.start(ctxA, src1, 24, 960);
     lc.stop();
     d.resolve(node.handle);
@@ -79,13 +90,19 @@ describe('CaptureLifecycle', () => {
 
   it('node creation failure for a cancelled start is swallowed; for the current start it surfaces', async () => {
     const d1 = deferred<CaptureNodeHandle>();
-    const lc = new CaptureLifecycle<object>(() => d1.promise, () => undefined);
+    const lc = new CaptureLifecycle<object>(
+      () => d1.promise,
+      () => undefined,
+    );
     const cancelled = lc.start(ctxA, src1, 24, 960);
     lc.stop();
     d1.reject(new Error('boom'));
     expect(await cancelled).toBeNull();
     const d2 = deferred<CaptureNodeHandle>();
-    const lc2 = new CaptureLifecycle<object>(() => d2.promise, () => undefined);
+    const lc2 = new CaptureLifecycle<object>(
+      () => d2.promise,
+      () => undefined,
+    );
     const current = lc2.start(ctxA, src1, 24, 960);
     d2.reject(new Error('boom'));
     await expect(current).rejects.toThrow('boom');
@@ -94,7 +111,10 @@ describe('CaptureLifecycle', () => {
   it('stop() during node creation, then dispose(): partially created resources are released', async () => {
     const d = deferred<CaptureNodeHandle>();
     const node = fakeNode();
-    const lc = new CaptureLifecycle<object>(() => d.promise, () => undefined);
+    const lc = new CaptureLifecycle<object>(
+      () => d.promise,
+      () => undefined,
+    );
     const p = lc.start(ctxA, src1, 24, 960);
     lc.stop();
     d.resolve(node.handle);
@@ -106,11 +126,14 @@ describe('CaptureLifecycle', () => {
 
   it('repeated restart cycles never leave more than one active producer or connection', async () => {
     const nodes = new Map<object, ReturnType<typeof fakeNode>>();
-    const lc = new CaptureLifecycle<object>(async (ctx) => {
-      const n = fakeNode();
-      nodes.set(ctx, n);
-      return n.handle;
-    }, () => undefined);
+    const lc = new CaptureLifecycle<object>(
+      async (ctx) => {
+        const n = fakeNode();
+        nodes.set(ctx, n);
+        return n.handle;
+      },
+      () => undefined,
+    );
     const pending: Array<Promise<number | null>> = [];
     for (let i = 0; i < 200; i++) {
       const ctx = i % 7 === 0 ? ctxB : ctxA; // also switches contexts (sample-rate changes)
@@ -128,6 +151,7 @@ describe('CaptureLifecycle', () => {
     }
     expect(producers).toBeLessThanOrEqual(1);
     expect(connections).toBeLessThanOrEqual(1);
+    expect(lc.connectedSources).toBe(connections);
     expect(lc.currentGeneration === 0 ? 0 : 1).toBe(producers);
   });
 });
@@ -146,7 +170,10 @@ describe('pipeline boundary: stale capture generations', () => {
     const s = p.stats();
     expect(s.capturedFrames).toBe(960 + 320);
     expect(s.droppedFrames).toBe(320);
-    expect(s.recent.at(-1)).toMatchObject({ cause: 'stale-capture', detail: { generation: 7, firstFrame: 960, frames: 320 } });
+    expect(s.recent.at(-1)).toMatchObject({
+      cause: 'stale-capture',
+      detail: { generation: 7, firstFrame: 960, frames: 320 },
+    });
     expect(sent).toEqual([0]);
   });
 
@@ -167,5 +194,25 @@ describe('pipeline boundary: stale capture generations', () => {
     expect(s.capturedFrames).toBe(5 * 960);
     expect(s.droppedFrames).toBe(5 * 960);
     expect(s.recent.at(-1)!.cause).toBe('session-reset');
+  });
+});
+
+describe('CaptureLifecycle connections', () => {
+  it('keeps the same source connected across stop/start, swaps it for a new source, releases on dispose', async () => {
+    const node = fakeNode();
+    const lc = new CaptureLifecycle<object>(
+      async () => node.handle,
+      () => undefined,
+    );
+    await lc.start(ctxA, src1, 24, 960);
+    lc.stop();
+    expect([...node.connected]).toEqual([src1]); // idle node, input continuous
+    await lc.start(ctxA, src1, 24, 960);
+    expect([...node.connected]).toEqual([src1]);
+    await lc.start(ctxA, src2, 24, 960);
+    expect([...node.connected]).toEqual([src2]);
+    await lc.dispose();
+    expect(node.connected.size).toBe(0);
+    expect(node.disposed).toBe(true);
   });
 });

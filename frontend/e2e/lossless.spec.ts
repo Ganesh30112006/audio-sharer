@@ -12,10 +12,11 @@ async function ctxFor(
 ): Promise<BrowserContext> {
   const ctx = await browser.newContext();
   await ctx.addInitScript((cap) => {
-    localStorage.setItem(
-      'mc.settings.v1',
-      JSON.stringify({ displayName: 'LL', transport: 'lossless', showDiagnostics: true }),
-    );
+    if (location.protocol.startsWith('http'))
+      localStorage.setItem(
+        'mc.settings.v1',
+        JSON.stringify({ displayName: 'LL', transport: 'lossless', showDiagnostics: true }),
+      );
     if (!cap) return;
     // Observe (copy) PCM handed to the playback worklet; nothing is modified.
     const w = window as unknown as { __rx: Float32Array[] };
@@ -124,8 +125,8 @@ for (const { rate, bits, label } of FORMATS) {
     const stats = {
       rate: await metric('Lossless data rate'),
       buffer: await metric('Buffer'),
-      underruns: await metric('Underruns'),
-      gaps: await metric('Sequence gaps'),
+      outages: await metric('Outages'),
+      gaps: await metric('Unannounced gaps'),
       compression: (
         (await host.locator('[data-metric="lossless Compression"] dd').textContent()) ?? ''
       ).trim(),

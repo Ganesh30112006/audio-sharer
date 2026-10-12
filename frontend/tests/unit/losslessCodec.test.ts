@@ -114,9 +114,20 @@ describe('block sizing', () => {
 describe('header v2', () => {
   it('carries continuity metadata', async () => {
     const { peekHeader } = await import('../../src/audio/lossless/codec');
-    const b = { ...block(64, 2, 16, music(16)), firstFrame: 4_294_967_000, captureMs: 123_456, discontinuity: true };
+    const b = {
+      ...block(64, 2, 16, music(16)),
+      firstFrame: 4_294_967_000,
+      captureMs: 123_456,
+      discontinuity: true,
+    };
     const enc = encodeBlock(b);
-    expect(peekHeader(enc)).toMatchObject({ seq: 7, firstFrame: 4_294_967_000, captureMs: 123_456, discontinuity: true, frames: 64 });
+    expect(peekHeader(enc)).toMatchObject({
+      seq: 7,
+      firstFrame: 4_294_967_000,
+      captureMs: 123_456,
+      discontinuity: true,
+      frames: 64,
+    });
     expect(peekHeader(encodeBlock(block(64, 2, 16, music(16)))).discontinuity).toBe(false);
     const old = enc.slice();
     old[2] = 1;
@@ -158,7 +169,10 @@ describe('protocol validation', () => {
     for (let i = 0; i < 2000; i++) {
       const g = good();
       const n = 1 + Math.floor(rand() * 4 + 4);
-      for (let j = 0; j < n; j++) g[24 + Math.floor(((rand() + 1) / 2) * (g.length - 24))] = Math.floor(((rand() + 1) / 2) * 256);
+      for (let j = 0; j < n; j++)
+        g[24 + Math.floor(((rand() + 1) / 2) * (g.length - 24))] = Math.floor(
+          ((rand() + 1) / 2) * 256,
+        );
       try {
         decodeBlock(g);
       } catch (e) {
