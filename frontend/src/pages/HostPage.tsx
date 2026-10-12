@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Power, Radio, MonitorSpeaker, Mic } from 'lucide-react';
 import { getCapabilities } from '../audio/capabilities';
-import { estimateEgressKbps, policyFor, type QualityPreset } from '../audio/sourcePolicy';
+import { estimateEgressKbps, type QualityPreset } from '../audio/sourcePolicy';
 import { DiagnosticsPanel } from '../components/DiagnosticsPanel';
 import { InviteCard } from '../components/InviteCard';
 import { ListenerList } from '../components/ListenerList';
@@ -63,9 +63,7 @@ function HostDashboard({ session }: { session: HostSession }) {
   };
 
   const listenerCount = conn.participants.filter((p) => p.role === 'listener').length;
-  const policy = policyFor(host.source, host.quality, {
-    voiceProcessing: settingsStore.get().voiceProcessing,
-  });
+  const policy = session.policy(host.source);
   const egress = estimateEgressKbps(
     policy.publish.maxBitrate,
     Math.max(1, listenerCount),
@@ -144,11 +142,23 @@ function HostDashboard({ session }: { session: HostSession }) {
                 className="small muted"
                 title="Opus payload plus packet overhead, from the SFU to all listeners"
               >
-                ≈ {(policy.publish.maxBitrate / 1000).toFixed(0)} kbps up · ≈{' '}
-                {(egress / 1000).toFixed(2)} Mbps SFU egress for {Math.max(1, listenerCount)}{' '}
-                listener{listenerCount === 1 ? '' : 's'}
+                ≈ {((policy.publish.maxBitrate * (policy.publish.red ? 2 : 1)) / 1000).toFixed(0)}{' '}
+                kbps up · ≈ {(egress / 1000).toFixed(2)} Mbps SFU egress for{' '}
+                {Math.max(1, listenerCount)} listener{listenerCount === 1 ? '' : 's'}
               </span>
             </div>
+            <label className="row small" style={{ flexWrap: 'nowrap' }}>
+              <input
+                type="checkbox"
+                checked={host.lossProtection}
+                disabled={host.busy}
+                onChange={(e) => void session.setLossProtection(e.currentTarget.checked)}
+              />
+              <span>
+                Loss protection (redundant audio) — fewer dropouts on weak networks, about twice the
+                bandwidth.
+              </span>
+            </label>
             {host.source === 'file' && !currentId && (
               <p className="small muted">Add an audio file to start broadcasting.</p>
             )}

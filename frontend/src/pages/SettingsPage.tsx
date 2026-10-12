@@ -64,6 +64,21 @@ export default function SettingsPage() {
         <label className="row" style={{ flexWrap: 'nowrap' }}>
           <input
             type="checkbox"
+            checked={s.lossProtection}
+            onChange={(e) => updateSettings({ lossProtection: e.currentTarget.checked })}
+          />
+          <span>
+            Loss protection for broadcasts (Opus RED).
+            <br />
+            <span className="small muted">
+              Re-sends each audio frame once. Removes most dropouts at a few % packet loss; roughly
+              doubles bandwidth.
+            </span>
+          </span>
+        </label>
+        <label className="row" style={{ flexWrap: 'nowrap' }}>
+          <input
+            type="checkbox"
             checked={s.showDiagnostics}
             onChange={(e) => updateSettings({ showDiagnostics: e.currentTarget.checked })}
           />

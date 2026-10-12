@@ -1,5 +1,5 @@
 import { LocalFilePlayer } from '../audio/LocalFilePlayer';
-import { policyFor, type QualityPreset } from '../audio/sourcePolicy';
+import { policyFor, type QualityPreset, type SourcePolicy } from '../audio/sourcePolicy';
 import {
   captureDisplayAudio,
   captureMicrophone,
@@ -27,6 +27,7 @@ export interface HostState {
   queue: QueueItem[];
   captureLabel: string | null;
   quality: QualityPreset;
+  lossProtection: boolean;
   busy: boolean;
   error: string | null;
   notices: string[];
@@ -59,6 +60,7 @@ export class HostSession {
       queue: [],
       captureLabel: null,
       quality: settingsStore.get().quality,
+      lossProtection: settingsStore.get().lossProtection,
       busy: false,
       error: null,
       notices: [],
@@ -161,10 +163,7 @@ export class HostSession {
   async useCapture(kind: 'capture' | 'microphone'): Promise<void> {
     if (this.store.get().busy) return;
     this.store.set({ busy: true, error: null });
-    const { quality } = this.store.get();
-    const policy = policyFor(kind, quality, {
-      voiceProcessing: settingsStore.get().voiceProcessing,
-    });
+    const policy = this.policy(kind);
     try {
       const cap =
         kind === 'capture' ? await captureDisplayAudio(policy) : await captureMicrophone(policy);
@@ -224,11 +223,23 @@ export class HostSession {
     if (this.store.get().live) await this.publishCurrent();
   }
 
-  private async publishCurrent(): Promise<void> {
-    const { source, quality } = this.store.get();
-    const policy = policyFor(source, quality, {
+  async setLossProtection(lossProtection: boolean): Promise<void> {
+    this.store.set({ lossProtection });
+    if (this.store.get().live) await this.publishCurrent();
+  }
+
+  /** Transport policy for a source under the host's current settings. */
+  policy(kind: SourceKind = this.store.get().source): SourcePolicy {
+    const { quality, lossProtection } = this.store.get();
+    return policyFor(kind, quality, {
       voiceProcessing: settingsStore.get().voiceProcessing,
+      lossProtection,
     });
+  }
+
+  private async publishCurrent(): Promise<void> {
+    const { source } = this.store.get();
+    const policy = this.policy(source);
     let track: MediaStreamTrack | undefined;
     let name: string;
     if (source === 'file') {

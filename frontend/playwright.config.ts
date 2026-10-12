@@ -7,7 +7,8 @@ import { defineConfig, devices } from '@playwright/test';
  * frontend are started here when not already running.
  */
 const localChromium = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
-const executablePath = process.env.PW_CHROMIUM_PATH ?? (existsSync(localChromium) ? localChromium : undefined);
+const executablePath =
+  process.env.PW_CHROMIUM_PATH ?? (existsSync(localChromium) ? localChromium : undefined);
 const python = process.env.E2E_PYTHON ?? 'python3';
 
 export default defineConfig({

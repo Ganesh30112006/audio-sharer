@@ -11,6 +11,8 @@ describe('policyFor', () => {
       expect(p.publish.dtx).toBe(false);
       expect(p.publish.forceStereo).toBe(true);
       expect(p.publish.maxBitrate).toBe(128_000);
+      expect(p.publish.red).toBe(true);
+      expect(policyFor(kind, 'high', { lossProtection: false }).publish.red).toBe(false);
     }
     expect(policyFor('file', 'standard').publish.maxBitrate).toBe(64_000);
   });

@@ -11,6 +11,8 @@ export interface Settings {
   quality: QualityPreset;
   /** Echo cancellation / noise suppression / AGC for microphone sources. */
   voiceProcessing: boolean;
+  /** Opus RED redundancy: fewer dropouts under packet loss, ~2x bandwidth. */
+  lossProtection: boolean;
   showDiagnostics: boolean;
 }
 
@@ -22,6 +24,7 @@ const defaults: Settings = {
   bufferMode: 'auto',
   quality: 'high',
   voiceProcessing: true,
+  lossProtection: true,
   showDiagnostics: false,
 };
 
@@ -32,6 +35,7 @@ function load(): Settings {
   if (saved.bufferMode === 'auto' || saved.bufferMode === 'stable') s.bufferMode = saved.bufferMode;
   if (saved.quality === 'standard' || saved.quality === 'high') s.quality = saved.quality;
   if (typeof saved.voiceProcessing === 'boolean') s.voiceProcessing = saved.voiceProcessing;
+  if (typeof saved.lossProtection === 'boolean') s.lossProtection = saved.lossProtection;
   if (typeof saved.showDiagnostics === 'boolean') s.showDiagnostics = saved.showDiagnostics;
   return s;
 }

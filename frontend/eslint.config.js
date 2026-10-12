@@ -18,4 +18,5 @@ export default tseslint.config(
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },
+  { files: ['e2e/**', 'scripts/**'], rules: { 'no-console': 'off' } },
 );

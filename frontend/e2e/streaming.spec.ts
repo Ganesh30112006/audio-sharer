@@ -12,7 +12,12 @@ async function newContext(browser: import('@playwright/test').Browser): Promise<
   await ctx.addInitScript(() => {
     localStorage.setItem(
       'mc.settings.v1',
-      JSON.stringify({ displayName: 'E2E', showDiagnostics: true, bufferMode: 'auto', quality: 'high' }),
+      JSON.stringify({
+        displayName: 'E2E',
+        showDiagnostics: true,
+        bufferMode: 'auto',
+        quality: 'high',
+      }),
     );
     // Count peer connections so tests can assert none are leaked or duplicated.
     const Native = window.RTCPeerConnection;
@@ -30,7 +35,10 @@ async function newContext(browser: import('@playwright/test').Browser): Promise<
 
 const openPeerConnections = (page: Page) =>
   page.evaluate(
-    () => (window as unknown as { __pcs: RTCPeerConnection[] }).__pcs.filter((pc) => pc.connectionState !== 'closed').length,
+    () =>
+      (window as unknown as { __pcs: RTCPeerConnection[] }).__pcs.filter(
+        (pc) => pc.connectionState !== 'closed',
+      ).length,
   );
 
 async function metric(page: Page, name: string): Promise<string> {
@@ -42,7 +50,9 @@ async function createHostedRoom(page: Page): Promise<string> {
   await page.getByLabel('Room name').fill('E2E room');
   await page.getByRole('button', { name: 'Create room' }).click();
   await page.waitForURL(/\/host\/[A-Z2-9]{6}$/);
-  await expect(page.getByRole('status').filter({ hasText: 'Connected' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('status').filter({ hasText: 'Connected' })).toBeVisible({
+    timeout: 20_000,
+  });
   return page.url().split('/').pop()!;
 }
 
@@ -63,7 +73,9 @@ async function join(page: Page, code: string): Promise<void> {
   await page.goto(`/room/${code}`);
   await expect(page.getByRole('heading', { name: 'E2E room' })).toBeVisible();
   await page.getByRole('button', { name: 'Join and listen' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Connected' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('status').filter({ hasText: 'Connected' })).toBeVisible({
+    timeout: 20_000,
+  });
 }
 
 test('host streams a file and a listener receives audible Opus audio', async ({ browser }) => {
@@ -77,13 +89,19 @@ test('host streams a file and a listener receives audible Opus audio', async ({ 
   await join(listener, code);
 
   await expect(listener.getByTestId('now-playing-title')).toHaveText('tone');
-  await expect(listener.getByText('Receiving audio from the host.')).toBeVisible({ timeout: 15_000 });
+  await expect(listener.getByText('Receiving audio from the host.')).toBeVisible({
+    timeout: 15_000,
+  });
   await expect.poll(() => metric(listener, 'Codec'), { timeout: 15_000 }).toContain('opus');
   await expect
-    .poll(async () => Number.parseFloat(await metric(listener, 'Audio level')) || 0, { timeout: 15_000 })
+    .poll(async () => Number.parseFloat(await metric(listener, 'Audio level')) || 0, {
+      timeout: 15_000,
+    })
     .toBeGreaterThan(0.05);
   await expect
-    .poll(async () => Number.parseFloat(await metric(listener, 'Bitrate')) || 0, { timeout: 15_000 })
+    .poll(async () => Number.parseFloat(await metric(listener, 'Bitrate')) || 0, {
+      timeout: 15_000,
+    })
     .toBeGreaterThan(48);
 
   // The host sees the listener (batched participant updates).
@@ -119,7 +137,9 @@ test('repeated join/leave cycles leave no peer connections behind', async ({ bro
   const cycles = 5;
   for (let i = 0; i < cycles; i++) {
     await join(listener, code);
-    await expect(listener.getByText('Receiving audio from the host.')).toBeVisible({ timeout: 15_000 });
+    await expect(listener.getByText('Receiving audio from the host.')).toBeVisible({
+      timeout: 15_000,
+    });
     // One room connection at a time, even under React StrictMode double-mount.
     expect(await openPeerConnections(listener)).toBeLessThanOrEqual(2);
     await listener.getByRole('button', { name: 'Leave' }).click();
@@ -140,9 +160,14 @@ test('a second host tab replaces the first instead of double-publishing', async 
   // Same context = same sessionStorage origin, but sessionStorage is per tab; copy the key.
   const key = await first.evaluate((c) => sessionStorage.getItem(`mc.host.${c}`), code);
   const second = await ctx.newPage();
-  await second.addInitScript(([c, k]) => sessionStorage.setItem(`mc.host.${c}`, k!), [code, key] as const);
+  await second.addInitScript(([c, k]) => sessionStorage.setItem(`mc.host.${c}`, k!), [
+    code,
+    key,
+  ] as const);
   await second.goto(`/host/${code}`);
-  await expect(second.getByRole('status').filter({ hasText: 'Connected' })).toBeVisible({ timeout: 20_000 });
+  await expect(second.getByRole('status').filter({ hasText: 'Connected' })).toBeVisible({
+    timeout: 20_000,
+  });
   await expect(first.getByText(/opened as host in another tab/)).toBeVisible({ timeout: 10_000 });
   await ctx.close();
 });

@@ -26,3 +26,17 @@ export function sineWav(seconds: number, freq = 440, sampleRate = 48_000, amplit
   }
   return buf;
 }
+
+/** Silence with short tone bursts every `periodS` seconds — onsets are easy to detect. */
+export function burstWav(seconds: number, periodS = 1, burstS = 0.05, sampleRate = 48_000): Buffer {
+  const tone = sineWav(seconds, 1000, sampleRate, 0.6);
+  const frames = Math.floor(seconds * sampleRate);
+  for (let i = 0; i < frames; i++) {
+    const t = i / sampleRate;
+    if (t % periodS >= burstS) {
+      tone.writeInt16LE(0, 44 + i * 4);
+      tone.writeInt16LE(0, 44 + i * 4 + 2);
+    }
+  }
+  return tone;
+}
