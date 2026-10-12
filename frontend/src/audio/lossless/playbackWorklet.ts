@@ -2,10 +2,12 @@
  * Jitter buffer + output for the lossless stream, on the audio thread.
  *
  * - Starts (and restarts after an underrun) once `targetMs` is buffered.
- * - The sender's and this device's sample clocks differ by a few ppm. When the
- *   buffer drifts outside ±`windowMs` of the target, a single frame is
- *   dropped or repeated per render quantum until it is back inside — a few
- *   frames per minute at typical clock offsets, counted in `clockCorrections`.
+ * - The sender's and this device's sample clocks differ by a few ppm. Drift is
+ *   judged on a smoothed buffer level (~2 s average) so that the sawtooth of
+ *   block-sized arrivals and network jitter never trigger corrections. When
+ *   the average leaves ±`windowMs` of the target, single frames are dropped or
+ *   repeated (at most one per CORRECTION_SPACING quanta) until it is back
+ *   within half the window. Counted in `clockCorrections`.
  * - If more than `maxMs` accumulates (e.g. after a network stall) the buffer
  *   is trimmed back to the target and counted in `resyncs`.
  */
@@ -15,6 +17,10 @@ interface PlaybackOptions {
   windowMs: number;
   maxMs: number;
 }
+
+const SMOOTHING_SECONDS = 2;
+/** Minimum render quanta between single-frame corrections (~21 ms at 48 kHz). */
+const CORRECTION_SPACING = 8;
 
 class PcmPlaybackProcessor extends AudioWorkletProcessor {
   private readonly channels: number;
@@ -37,6 +43,10 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
   private repeatedFrames = 0;
   private started = false;
   private lastReport = 0;
+  /** Smoothed buffer level (frames) and correction state. */
+  private avgLevel = 0;
+  private correcting: -1 | 0 | 1 = 0;
+  private sinceCorrection = 0;
 
   constructor(options: AudioWorkletNodeOptions) {
     super(options);
@@ -84,6 +94,8 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
     if (!this.playing && level >= this.target) {
       this.playing = true;
       this.started = true;
+      this.avgLevel = level;
+      this.correcting = 0;
       this.port.postMessage({ type: 'state', playing: true });
     }
     if (this.playing && level < n) {
@@ -103,12 +115,24 @@ class PcmPlaybackProcessor extends AudioWorkletProcessor {
       this.readFrame = this.writeFrame - this.target;
       this.resyncs++;
       level = this.target;
-    } else if (level > this.target + this.window) {
+      this.avgLevel = level;
+    }
+    // Drift is judged on the smoothed level, not the instantaneous one.
+    this.avgLevel += (level - this.avgLevel) * (n / (sampleRate * SMOOTHING_SECONDS));
+    const dev = this.avgLevel - this.target;
+    if (this.correcting === 0 && Math.abs(dev) > this.window) this.correcting = dev > 0 ? 1 : -1;
+    else if (this.correcting !== 0 && Math.abs(dev) < this.window / 2) this.correcting = 0;
+    const due = this.correcting !== 0 && ++this.sinceCorrection >= CORRECTION_SPACING;
+    if (due) this.sinceCorrection = 0;
+    if (due && this.correcting === 1 && level > n + 1) {
       this.readFrame++; // drop one frame
+      level--;
+      this.avgLevel--;
       this.skippedFrames++;
       this.clockCorrections++;
     }
-    const repeat = level < this.target - this.window && level > n;
+    const repeat = due && this.correcting === -1 && level > n;
+    if (repeat) this.avgLevel++;
     for (let i = 0; i < n; i++) {
       const idx = (this.readFrame + i) % this.cap;
       for (let c = 0; c < out.length; c++)

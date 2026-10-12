@@ -72,9 +72,15 @@ What "lossless" guarantees, and what it doesn't:
   (overload, network stall, restart), the stream reports an **explicit
   interruption** and playback restarts cleanly. Audio is never silently
   dropped, and playback never splices across a gap.
-- The listener's playback buffer follows the listener's device clock. At
-  typical clock differences it repeats or skips a single frame every few
-  seconds. Each of these corrections is counted.
+- The listener's playback buffer runs on the listener's audio clock. The
+  worklet judges drift on a ~2 s smoothed buffer level and, when it leaves
+  ±40 ms of the target, skips or repeats single frames (at most ~47/s) until
+  it is back within ±20 ms. In steady state this does nothing: the 10-minute
+  soak showed 0 corrections for 8.5 of its 10 minutes. After an arrival
+  burst (for example a pause on the host's main thread) it trims the extra
+  latency back gradually rather than with a hard resync. In that soak, one
+  burst cost 2,372 skipped frames (~0.05 s) over ~1.5 minutes. Every skipped
+  or repeated frame is counted, and delivered audio stays bit-exact.
 - Output devices, the OS mixer and **Bluetooth** (which re-encodes with
   SBC/AAC/LDAC) sit outside the browser, so lossless can't extend through
   them.
@@ -207,6 +213,14 @@ browser instance, so all their processes are counted; `e2e/cpu.spec.ts`):
 The codec worker moves ~2 points off the main (UI) thread, but total CPU stays
 the same. Most lossless cost is the browser's data-channel and Web Audio work,
 not the codec.
+
+**Long-running sessions** (`e2e/perf.spec.ts -g soak`, lossless, 3-track
+queue on repeat, host + 1 listener):
+
+| Run                         | Heap growth (host / listener) | DOM nodes / event listeners | Underruns / resyncs / reconnects | Clock corrections                                              |
+| --------------------------- | ----------------------------- | --------------------------- | -------------------------------- | -------------------------------------------------------------- |
+| 60 min (before smoothing)   | +0.39 MB / +0.63 MB           | unchanged                   | 0 / 0 / 0                        | 27,384 (~0.57 s of single-frame skips/repeats)                 |
+| 10 min (smoothed corrector) | +0.08 MB / +0.21 MB           | unchanged                   | 0 / 0 / 0                        | 2,372, all in one ~1.5 min recovery after a burst; 0 otherwise |
 
 **Integration gates** (`e2e/harness.spec.ts`, real worker and worklets): normal
 48/24 and 192/24, 3 s stall, slow link, sender restarts, receiver restarts,
