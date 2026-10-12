@@ -56,7 +56,7 @@ More in [`docs/screenshots/`](docs/screenshots/).
 
 | Mode                   | What listeners get                                                                             | Latency (measured, localhost) | Bandwidth per listener                                   |
 | ---------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------- | -------------------------------------------------------- |
-| **Lossless** (default) | The source's exact integer samples, up to **24-bit / 192 kHz**. Verified bit-exact end to end. | ~116 ms median                | ~1.0 Mbps (CD) to ~7.4 Mbps (192/24); depends on content |
+| **Lossless** (default) | The source's exact integer samples, up to **24-bit / 192 kHz**. Verified bit-exact end to end. | ~53 ms median (adaptive)      | ~1.0 Mbps (CD) to ~7.4 Mbps (192/24); depends on content |
 | **Studio** (Opus)      | Opus at its 510 kbps maximum, 48 kHz stereo. Perceptually transparent but lossy.               | ~45 ms median                 | ~510 kbps                                                |
 | High / Standard (Opus) | 128 / 64 kbps Opus, with optional loss protection (RED)                                        | ~45–60 ms                     | ~260 / 130 kbps with RED                                 |
 
@@ -72,10 +72,17 @@ What "lossless" guarantees, and what it doesn't:
   (overload, network stall, restart), the stream reports an **explicit
   interruption** and playback restarts cleanly. Audio is never silently
   dropped, and playback never splices across a gap.
+- The playback buffer adapts to the connection (auto mode) using a hybrid of
+  three models: a short-term one (the spread of block arrival times over the
+  last ~10 s, measured on the audio thread), a long-term one (a decaying
+  memory of recent stalls, 30 s half-life) and a reactive one (a step up after
+  any underrun). It starts at 40 ms (floor 20 ms), rises at once when jitter
+  grows and falls only after calm, so it sits at the lowest buffer the
+  connection sustains. Stable mode uses a fixed 300 ms buffer.
 - The listener's playback buffer runs on the listener's audio clock. The
   worklet judges drift on a ~2 s smoothed buffer level and, when it leaves
-  ±40 ms of the target, skips or repeats single frames (at most ~47/s) until
-  it is back within ±20 ms. In steady state this does nothing: the 10-minute
+  the target by more than a window (a quarter of the target, 5–40 ms), skips
+  or repeats single frames until it is back within half the window. In steady state this does nothing: the 10-minute
   soak showed 0 corrections for 8.5 of its 10 minutes. After an arrival
   burst (for example a pause on the host's main thread) it trims the extra
   latency back gradually rather than with a hard resync. In that soak, one
@@ -189,16 +196,16 @@ All numbers were measured in a cloud Linux container with headless Chromium
 (Playwright) and LiveKit 1.12.0 on localhost. Real networks, phones and
 Bluetooth will differ. Re-run the specs to measure your own setup.
 
-| Metric                     | Result                                                                                               | How                                                                                              |
-| -------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Initial JS (gzip)          | ~101 KB of 250 KB budget; LiveKit SDK (~141 KB) loads lazily                                         | `npm run build && npm run size`                                                                  |
-| Opus pipeline latency      | median ~45 ms (Studio, 'interactive' tap) vs ~68 ms with 'playback' (3 runs each)                    | `e2e/latency.spec.ts`: onset detection on a click track, host pre-encode to listener post-decode |
-| Lossless latency           | median ~116 ms clean, ~138 ms at 3% loss, 0 underruns                                                | same                                                                                             |
-| Loss protection            | at 3% packet loss, concealment events 46 → 0 with RED (128 kbps)                                     | same, CDP packet-loss emulation                                                                  |
-| Host uplink vs listeners   | flat for 1, 2, 4 and 8 listeners: Opus Studio 510 kbps every time; lossless 139–173 kbps (test tone) | `e2e/perf.spec.ts -g fan-out` with `PERF_TRANSPORT=opus` or `lossless`                           |
-| Lossless 192/24 throughput | ~7.4 Mbps sustained for 30 s, steady ~125 ms buffer, 0 underruns                                     | `e2e/hires-throughput.spec.ts`                                                                   |
-| Codec (192/24 music)       | encode ~11 ms / decode ~12 ms per second of audio (was 116 / 72); identical compression              | `npm run bench:codec`, baseline in `bench/results/baseline.json`                                 |
-| Codec allocations          | 1 typed array per block (the output)                                                                 | same                                                                                             |
+| Metric                     | Result                                                                                                                                                            | How                                                                                              |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Initial JS (gzip)          | ~101 KB of 250 KB budget; LiveKit SDK (~141 KB) loads lazily                                                                                                      | `npm run build && npm run size`                                                                  |
+| Opus pipeline latency      | median ~45 ms (Studio, 'interactive' tap) vs ~68 ms with 'playback' (3 runs each)                                                                                 | `e2e/latency.spec.ts`: onset detection on a click track, host pre-encode to listener post-decode |
+| Lossless latency           | adaptive buffer, 120 s runs: median 53 ms / p95 73 ms clean, 62 / 83 ms at 3% loss, 0 outages (fixed 120 ms buffer before: 116 / 127 ms clean, 138 ms at 3% loss) | same                                                                                             |
+| Loss protection            | at 3% packet loss, concealment events 46 → 0 with RED (128 kbps)                                                                                                  | same, CDP packet-loss emulation                                                                  |
+| Host uplink vs listeners   | flat for 1, 2, 4 and 8 listeners: Opus Studio 510 kbps every time; lossless 139–173 kbps (test tone)                                                              | `e2e/perf.spec.ts -g fan-out` with `PERF_TRANSPORT=opus` or `lossless`                           |
+| Lossless 192/24 throughput | ~7.4 Mbps sustained for 30 s, steady ~125 ms buffer, 0 underruns                                                                                                  | `e2e/hires-throughput.spec.ts`                                                                   |
+| Codec (192/24 music)       | encode ~11 ms / decode ~12 ms per second of audio (was 116 / 72); identical compression                                                                           | `npm run bench:codec`, baseline in `bench/results/baseline.json`                                 |
+| Codec allocations          | 1 typed array per block (the output)                                                                                                                              | same                                                                                             |
 
 **CPU** (percent of one core, 15 s window; host and listener each in their own
 browser instance, so all their processes are counted; `e2e/cpu.spec.ts`):
@@ -302,8 +309,10 @@ only **desktop Chromium on Linux** was actually tested.
 
 - All measurements come from localhost in headless Chromium. Behaviour on real
   networks, mobile devices, Safari, Firefox and Bluetooth hasn't been measured.
-- Lossless needs 1–8 Mbps per listener and has about 70 ms more latency than
-  Opus. Under sustained congestion it interrupts (announced) instead of
+- Lossless needs 1–8 Mbps per listener and has about 10 ms more latency than
+  Opus (median 53 ms vs ~45 ms here). The adaptive buffer grows on devices
+  or networks that stall; a stall larger than any it has seen yet can still
+  cause one short outage. Under sustained congestion it interrupts (announced) instead of
   degrading quality.
 - Right after a graph reconnect, Chromium can deliver one stale render
   quantum. The defense: the source stays connected across restarts, and each

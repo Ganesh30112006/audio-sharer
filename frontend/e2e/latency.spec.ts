@@ -77,13 +77,11 @@ for (const { name, bufferMode, impair, transport = 'opus' } of scenarios) {
       timeout: 20_000,
     });
     const code = host.url().split('/').pop()!;
-    await host
-      .getByTestId('file-input')
-      .setInputFiles({
-        name: 'clicks.wav',
-        mimeType: 'audio/wav',
-        buffer: burstWav(MEASURE_S + 15),
-      });
+    await host.getByTestId('file-input').setInputFiles({
+      name: 'clicks.wav',
+      mimeType: 'audio/wav',
+      buffer: burstWav(MEASURE_S + 15),
+    });
     await host.getByRole('button', { name: 'Go live' }).click();
 
     if (impair) {
