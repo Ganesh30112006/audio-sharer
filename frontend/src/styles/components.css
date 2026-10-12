@@ -49,6 +49,11 @@
   border-color: transparent;
   background: transparent;
 }
+.btn-toggled {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .btn-icon {
   padding: 8px;
   min-width: 40px;

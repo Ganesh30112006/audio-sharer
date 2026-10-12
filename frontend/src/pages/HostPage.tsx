@@ -113,7 +113,7 @@ function HostDashboard({ session }: { session: HostSession }) {
               <h2 id="broadcast-heading">
                 <Radio size={18} aria-hidden /> Broadcast
               </h2>
-              <div className="field" style={{ minWidth: 150 }}>
+              <div className="field" style={{ minWidth: 200 }}>
                 <label htmlFor="quality" className="visually-hidden">
                   Stream quality
                 </label>
@@ -123,6 +123,7 @@ function HostDashboard({ session }: { session: HostSession }) {
                   onChange={(e) => void session.setQuality(e.currentTarget.value as QualityPreset)}
                   disabled={host.busy}
                 >
+                  <option value="studio">Studio (Opus max, 510 kbps)</option>
                   <option value="high">High quality (128 kbps)</option>
                   <option value="standard">Standard (64 kbps)</option>
                 </select>
@@ -180,7 +181,13 @@ function HostDashboard({ session }: { session: HostSession }) {
                 player={session.player}
                 onPrevious={() => session.previous()}
                 onNext={() => session.next()}
-                hasNext={currentIdx >= 0 && currentIdx < host.queue.length - 1}
+                hasNext={
+                  host.repeat
+                    ? host.queue.length > 0
+                    : currentIdx >= 0 && currentIdx < host.queue.length - 1
+                }
+                repeat={host.repeat}
+                onToggleRepeat={() => session.setRepeat(!host.repeat)}
               />
             ) : (
               <div className="row">

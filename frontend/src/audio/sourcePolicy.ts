@@ -1,6 +1,12 @@
 import type { SourceKind } from '../types/sync';
 
-export type QualityPreset = 'standard' | 'high';
+/**
+ * standard/high are efficient music rates; studio is Opus at its maximum
+ * (510 kbps stereo, 48 kHz fullband) — perceptually transparent for most
+ * material, but still lossy: WebRTC audio tracks cannot carry lossless codecs.
+ */
+export type QualityPreset = 'standard' | 'high' | 'studio';
+export const QUALITY_PRESETS: QualityPreset[] = ['studio', 'high', 'standard'];
 
 /**
  * Per-source capture and transport policy. Music must not go through voice
@@ -24,14 +30,24 @@ export interface SourcePolicy {
   trackSource: 'microphone' | 'screen_share_audio';
 }
 
-const MUSIC_BITRATE: Record<QualityPreset, number> = { standard: 64_000, high: 128_000 };
+export const RED_MAX_BITRATE = 192_000;
+
+export const MUSIC_BITRATE: Record<QualityPreset, number> = {
+  standard: 64_000,
+  high: 128_000,
+  studio: 510_000,
+};
 
 export function policyFor(
   kind: SourceKind,
   quality: QualityPreset,
   opts: { voiceProcessing?: boolean; lossProtection?: boolean } = {},
 ): SourcePolicy {
-  const red = opts.lossProtection ?? true;
+  // RED carries two Opus frames per packet. Above ~192 kbps two 20 ms frames
+  // no longer fit a safe RTP payload (~1100 bytes), so packets fragment or are
+  // dropped — measured as ~30 % loss at 510 kbps. Studio quality therefore
+  // relies on Opus's own loss concealment instead.
+  const red = (opts.lossProtection ?? true) && MUSIC_BITRATE[quality] <= RED_MAX_BITRATE;
   const noProcessing: MediaTrackConstraints = {
     echoCancellation: false,
     noiseSuppression: false,

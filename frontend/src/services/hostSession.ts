@@ -28,6 +28,8 @@ export interface HostState {
   captureLabel: string | null;
   quality: QualityPreset;
   lossProtection: boolean;
+  /** Restart the queue from the top after the last item. */
+  repeat: boolean;
   busy: boolean;
   error: string | null;
   notices: string[];
@@ -61,6 +63,7 @@ export class HostSession {
       captureLabel: null,
       quality: settingsStore.get().quality,
       lossProtection: settingsStore.get().lossProtection,
+      repeat: false,
       busy: false,
       error: null,
       notices: [],
@@ -134,7 +137,7 @@ export class HostSession {
   next(auto = false): void {
     const { queue } = this.store.get();
     const idx = queue.findIndex((q) => q.id === this.player.store.get().currentId);
-    const nextItem = queue[idx + 1];
+    const nextItem = queue[idx + 1] ?? (this.store.get().repeat ? queue[0] : undefined);
     if (nextItem) this.loadItem(nextItem.id, true);
     else if (auto) this.pushSync();
   }
@@ -282,6 +285,10 @@ export class HostSession {
         duration: null,
       });
     }
+  }
+
+  setRepeat(repeat: boolean): void {
+    this.store.set({ repeat });
   }
 
   dismissNotices(): void {

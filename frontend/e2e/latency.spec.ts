@@ -98,6 +98,8 @@ for (const { name, bufferMode, impair } of scenarios) {
       packetLoss: await metric('Packet loss'),
       concealmentEvents: await metric('Concealment events'),
       jitterBuffer: await metric('Jitter buffer'),
+      listenerBitrate: await metric('Bitrate'),
+      hostBitrate: ((await host.locator('[data-metric="Bitrate"] dd').textContent()) ?? '').trim(),
     };
     console.log(`[latency] ${JSON.stringify(result)}`);
     test.info().annotations.push({ type: 'latency', description: JSON.stringify(result) });

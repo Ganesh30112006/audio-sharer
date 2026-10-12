@@ -1,0 +1,16 @@
+# systemd unit for a self-hosted LiveKit SFU (native binary, no containers).
+#   curl -sSL https://github.com/livekit/livekit/releases/download/v1.12.0/livekit_1.12.0_linux_amd64.tar.gz | sudo tar xz -C /usr/local/bin livekit-server
+#   sudo cp deploy/livekit.service /etc/systemd/system/ && sudo systemctl enable --now livekit
+[Unit]
+Description=LiveKit SFU
+After=network-online.target
+
+[Service]
+User=livekit
+EnvironmentFile=/etc/livekit/env
+ExecStart=/usr/local/bin/livekit-server --config /etc/livekit/livekit.yaml
+Restart=on-failure
+LimitNOFILE=500000
+
+[Install]
+WantedBy=multi-user.target

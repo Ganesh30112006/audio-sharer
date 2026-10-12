@@ -56,10 +56,12 @@ function ListenerRoom({ session }: { session: ListenerSession }) {
     navigate('/');
   };
 
-  if (state.phase === 'idle' || (state.phase === 'error' && !conn.error && conn.state === 'idle')) {
+  const joinFailed =
+    state.phase === 'error' && conn.state !== 'connected' && conn.state !== 'reconnecting';
+  if (state.phase === 'idle' || joinFailed) {
     return (
       <div className="page" style={{ maxWidth: 520 }}>
-        {state.error ? (
+        {!state.room && state.error ? (
           <Notice tone="error">
             {state.error} <Link to="/">Back to start</Link>
           </Notice>
@@ -71,6 +73,7 @@ function ListenerRoom({ session }: { session: ListenerSession }) {
             <p className="muted small">
               Room <span className="mono">{session.code}</span>
             </p>
+            {state.error && <Notice tone="error">{state.error}</Notice>}
             {!getCapabilities().webrtc && (
               <Notice tone="error">
                 This browser doesn't support WebRTC, so it can't receive the stream.

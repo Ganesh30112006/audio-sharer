@@ -18,7 +18,9 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: true,
     // livekit-client is loaded via dynamic import() only when a room is joined,
-    // so it lands in its own chunk outside the initial shell.
+    // so it lands in its own ~140 KB (gzip) chunk outside the initial shell.
+    // The initial-shell budget is enforced by scripts/bundle-report.mjs.
+    chunkSizeWarningLimit: 600,
   },
   test: {
     environment: 'jsdom',

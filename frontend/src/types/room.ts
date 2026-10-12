@@ -18,6 +18,7 @@ export interface RoomInfo {
   created_at: number;
   expires_at: number;
   max_listeners: number;
+  sfu_url: string;
 }
 
 export interface CreatedRoom {

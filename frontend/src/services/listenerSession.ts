@@ -58,6 +58,9 @@ export class ListenerSession {
     try {
       const room = await api.getRoom(this.code);
       this.store.set({ room });
+      // Start SDK download, DNS and TLS to the SFU while the user reads the page.
+      void this.conn.prewarm(room.sfu_url);
+      void this.clock.sync();
       return room;
     } catch (err) {
       this.store.set({ phase: 'error', error: (err as Error).message });
@@ -78,7 +81,7 @@ export class ListenerSession {
     try {
       const [grant] = await Promise.all([
         api.token(this.code, 'listener', displayName || 'Listener'),
-        this.clock.sync(),
+        this.clock.current ? undefined : this.clock.sync(),
       ]);
       if (this.disposed) return;
       await this.conn.connect(grant);

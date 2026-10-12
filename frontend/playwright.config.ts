@@ -39,7 +39,8 @@ export default defineConfig({
       env: { RATE_LIMIT_CREATE_PER_MINUTE: '1000', RATE_LIMIT_TOKEN_PER_MINUTE: '1000' },
     },
     {
-      command: 'npx vite --host 127.0.0.1 --port 5173 --strictPort',
+      // Production build: measurements must not include React dev-mode overhead.
+      command: 'npx vite build && npx vite preview --host 127.0.0.1 --port 5173 --strictPort',
       url: 'http://127.0.0.1:5173',
       reuseExistingServer: true,
     },

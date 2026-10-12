@@ -20,6 +20,7 @@ def test_create_and_get_room(client: TestClient, room: dict) -> None:
     info = client.get(f"/api/rooms/{room['code']}").json()
     assert info["name"] == "Test room"
     assert "host_key" not in info
+    assert info["sfu_url"].startswith("ws")
     # Codes are case-insensitive for people typing them.
     assert client.get(f"/api/rooms/{room['code'].lower()}").status_code == 200
 

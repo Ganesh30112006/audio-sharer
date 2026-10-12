@@ -40,3 +40,14 @@ export function burstWav(seconds: number, periodS = 1, burstS = 0.05, sampleRate
   }
   return tone;
 }
+
+/** Uncorrelated stereo white noise — worst case for the encoder, so it shows the real bitrate ceiling. */
+export function noiseWav(seconds: number, sampleRate = 48_000, amplitude = 0.3): Buffer {
+  const buf = sineWav(seconds, 440, sampleRate, 0);
+  const frames = Math.floor(seconds * sampleRate);
+  let seed = 12345;
+  const rand = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff) * 2 - 1;
+  for (let i = 0; i < frames * 2; i++)
+    buf.writeInt16LE(Math.round(rand() * amplitude * 32767), 44 + i * 2);
+  return buf;
+}

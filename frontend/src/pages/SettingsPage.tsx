@@ -43,6 +43,9 @@ export default function SettingsPage() {
             value={s.quality}
             onChange={(e) => updateSettings({ quality: e.currentTarget.value as QualityPreset })}
           >
+            <option value="studio">
+              Studio — Opus maximum, 510 kbps stereo (transparent, not lossless)
+            </option>
             <option value="high">High — 128 kbps stereo</option>
             <option value="standard">Standard — 64 kbps stereo</option>
           </select>

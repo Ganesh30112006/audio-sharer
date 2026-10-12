@@ -2,16 +2,19 @@
  * AudioContext factory. Contexts are only created when a feature needs Web
  * Audio (publishing a file, per-output delay), never per render.
  *
- * 48 kHz matches Opus and most output hardware, avoiding a resampling step;
- * 'playback' latency trades a little output latency for fewer underruns and
- * lower CPU — appropriate for music.
+ * 48 kHz matches Opus and most output hardware, avoiding a resampling step.
+ * 'playback' (default) uses larger render blocks: fewer underruns, lower CPU,
+ * fine for local delay chains. The broadcast tap uses 'interactive' because
+ * its block size adds directly to end-to-end latency.
  */
-export function createPlaybackContext(): AudioContext {
+export function createPlaybackContext(
+  latencyHint: AudioContextLatencyCategory = 'playback',
+): AudioContext {
   try {
-    return new AudioContext({ latencyHint: 'playback', sampleRate: 48_000 });
+    return new AudioContext({ latencyHint, sampleRate: 48_000 });
   } catch {
     // Some engines reject an explicit sampleRate; fall back to the device rate.
-    return new AudioContext({ latencyHint: 'playback' });
+    return new AudioContext({ latencyHint });
   }
 }
 

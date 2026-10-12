@@ -1,4 +1,13 @@
-import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, Loader2 } from 'lucide-react';
+import {
+  Loader2,
+  Pause,
+  Play,
+  Repeat,
+  SkipBack,
+  SkipForward,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
 import { useStore } from '../hooks/useStore';
 import type { LocalFilePlayer } from '../audio/LocalFilePlayer';
 import { ProgressBar } from './ProgressBar';
@@ -9,6 +18,8 @@ interface PlayerControlsProps {
   onPrevious: () => void;
   onNext: () => void;
   hasNext: boolean;
+  repeat: boolean;
+  onToggleRepeat: () => void;
 }
 
 const selStatus = (s: { status: string }) => s.status;
@@ -19,7 +30,14 @@ const selMonitor = (s: { monitor: boolean }) => s.monitor;
 const selBuffering = (s: { buffering: boolean }) => s.buffering;
 const selError = (s: { error: string | null }) => s.error;
 
-export function PlayerControls({ player, onPrevious, onNext, hasNext }: PlayerControlsProps) {
+export function PlayerControls({
+  player,
+  onPrevious,
+  onNext,
+  hasNext,
+  repeat,
+  onToggleRepeat,
+}: PlayerControlsProps) {
   const status = useStore(player.store, selStatus);
   const title = useStore(player.store, selTitle);
   const duration = useStore(player.store, selDuration);
@@ -74,6 +92,15 @@ export function PlayerControls({ player, onPrevious, onNext, hasNext }: PlayerCo
             aria-label="Next"
           >
             <SkipForward size={18} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className={`btn btn-icon${repeat ? ' btn-toggled' : ' btn-ghost'}`}
+            onClick={onToggleRepeat}
+            aria-pressed={repeat}
+            aria-label="Repeat queue"
+          >
+            <Repeat size={18} aria-hidden />
           </button>
         </div>
         <div className="row volume">

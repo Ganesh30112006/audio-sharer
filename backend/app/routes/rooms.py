@@ -79,6 +79,7 @@ def get_room(code: RoomCode, registry: Registry, settings: AppSettings) -> RoomI
         created_at=int(room.created_at),
         expires_at=int(room.expires_at),
         max_listeners=settings.max_listeners_per_room,
+        sfu_url=settings.livekit_url,
     )
 
 

@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
-import { sineWav } from './wav';
+import { noiseWav, sineWav } from './wav';
 
 /**
  * Real-stack tests: two isolated browser contexts (host and listener) talk to
@@ -171,3 +171,44 @@ test('a second host tab replaces the first instead of double-publishing', async 
   await expect(first.getByText(/opened as host in another tab/)).toBeVisible({ timeout: 10_000 });
   await ctx.close();
 });
+
+for (const [quality, minKbps, maxKbps] of [
+  ['studio', 380, 560],
+  ['high', 100, 290],
+] as const) {
+  test(`${quality} quality reaches its target bitrate on broadband content`, async ({
+    browser,
+  }) => {
+    const hostCtx = await newContext(browser);
+    const listenerCtx = await newContext(browser);
+    await hostCtx.addInitScript((q) => {
+      const s = JSON.parse(localStorage.getItem('mc.settings.v1') ?? '{}');
+      localStorage.setItem('mc.settings.v1', JSON.stringify({ ...s, quality: q }));
+    }, quality);
+    const host = await hostCtx.newPage();
+    const listener = await listenerCtx.newPage();
+    const code = await createHostedRoom(host);
+    await host
+      .getByTestId('file-input')
+      .setInputFiles({ name: 'noise.wav', mimeType: 'audio/wav', buffer: noiseWav(30) });
+    await host.getByRole('button', { name: 'Go live' }).click();
+    await host.getByRole('button', { name: 'Play', exact: true }).click();
+    await join(listener, code);
+    await expect(listener.getByText('Receiving audio from the host.')).toBeVisible({
+      timeout: 15_000,
+    });
+    await listener.waitForTimeout(8000);
+    const hostKbps = Number.parseFloat(await metric(host, 'Bitrate'));
+    const listenerKbps = Number.parseFloat(await metric(listener, 'Bitrate'));
+    const concealed = await metric(listener, 'Concealment events');
+    console.log(
+      `[quality] ${JSON.stringify({ quality, hostKbps, listenerKbps, codec: await metric(listener, 'Codec'), concealed })}`,
+    );
+    expect(hostKbps).toBeGreaterThan(minKbps);
+    expect(hostKbps).toBeLessThan(maxKbps);
+    expect(listenerKbps).toBeGreaterThan(minKbps);
+    expect(await metric(listener, 'Codec')).toBe('opus stereo');
+    await hostCtx.close();
+    await listenerCtx.close();
+  });
+}

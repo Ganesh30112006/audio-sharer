@@ -45,6 +45,7 @@ class RoomInfo(BaseModel):
     created_at: int
     expires_at: int
     max_listeners: int
+    sfu_url: str = Field(description="Public SFU URL so clients can pre-warm the connection")
 
 
 class TokenRequest(StrictModel):

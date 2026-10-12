@@ -65,6 +65,8 @@ export class RoomConnection {
   readonly events = new Emitter<RoomEvents>();
 
   private room: Room | null = null;
+  /** Room created by prewarm(); adopted by the first connect. */
+  private prepared: Room | null = null;
   private connecting: Promise<void> | null = null;
   private disposer = new Disposer();
   private publication: LocalTrackPublication | null = null;
@@ -93,17 +95,39 @@ export class RoomConnection {
     return this.connecting;
   }
 
-  private async doConnect(grant: TokenGrant): Promise<void> {
-    this.store.set({ state: 'connecting', error: null });
-    const lk = await loadLiveKit();
-    if (this.closed) return;
-    const room = new lk.Room({
+  /**
+   * Called as soon as the SFU URL is known (before the user clicks Join):
+   * downloads the SDK chunk and lets it resolve DNS / open TLS to the SFU, so
+   * the eventual connect skips those round trips.
+   */
+  async prewarm(url: string): Promise<void> {
+    if (this.closed || this.room || this.prepared) return;
+    try {
+      const lk = await loadLiveKit();
+      if (this.closed || this.room || this.prepared) return;
+      this.prepared = this.createRoom(lk);
+      await this.prepared.prepareConnection(url);
+    } catch {
+      // Best effort: connect() works without it.
+    }
+  }
+
+  private createRoom(lk: LiveKit): Room {
+    return new lk.Room({
       adaptiveStream: false,
       dynacast: false,
       disconnectOnPageLeave: true,
       webAudioMix: false,
       stopLocalTrackOnUnpublish: false,
     });
+  }
+
+  private async doConnect(grant: TokenGrant): Promise<void> {
+    this.store.set({ state: 'connecting', error: null });
+    const lk = await loadLiveKit();
+    if (this.closed) return;
+    const room = this.prepared ?? this.createRoom(lk);
+    this.prepared = null;
     this.room = room;
     this.bindRoomEvents(lk, room);
     try {
@@ -320,8 +344,9 @@ export class RoomConnection {
     if (this.flushTimer !== null) clearTimeout(this.flushTimer);
     this.flushTimer = null;
     await this.connecting?.catch(() => undefined);
-    const room = this.room;
+    const room = this.room ?? this.prepared;
     this.room = null;
+    this.prepared = null;
     this.publication = null;
     this.remoteTrack = null;
     this.disposer.dispose();

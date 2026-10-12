@@ -1,0 +1,21 @@
+# systemd unit for the FastAPI control plane.
+#   sudo cp deploy/multiconnect-api.service /etc/systemd/system/
+#   sudo systemctl enable --now multiconnect-api
+[Unit]
+Description=MultiConnect Audio control plane (FastAPI)
+After=network-online.target
+
+[Service]
+User=multiconnect
+WorkingDirectory=/srv/multiconnect/backend
+EnvironmentFile=/srv/multiconnect/backend/.env
+# One worker: room registry and rate limiter live in-process (see README "Scaling").
+ExecStart=/srv/multiconnect/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

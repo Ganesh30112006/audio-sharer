@@ -1,4 +1,4 @@
-import type { QualityPreset } from '../audio/sourcePolicy';
+import { QUALITY_PRESETS, type QualityPreset } from '../audio/sourcePolicy';
 import { readJson, writeJson } from '../utils/storage';
 import { createStore } from '../utils/store';
 
@@ -22,7 +22,7 @@ export const STABLE_BUFFER_SECONDS = 0.25;
 const defaults: Settings = {
   displayName: '',
   bufferMode: 'auto',
-  quality: 'high',
+  quality: 'studio',
   voiceProcessing: true,
   lossProtection: true,
   showDiagnostics: false,
@@ -33,7 +33,7 @@ function load(): Settings {
   const s: Settings = { ...defaults };
   if (typeof saved.displayName === 'string') s.displayName = saved.displayName.slice(0, 40);
   if (saved.bufferMode === 'auto' || saved.bufferMode === 'stable') s.bufferMode = saved.bufferMode;
-  if (saved.quality === 'standard' || saved.quality === 'high') s.quality = saved.quality;
+  if (saved.quality && QUALITY_PRESETS.includes(saved.quality)) s.quality = saved.quality;
   if (typeof saved.voiceProcessing === 'boolean') s.voiceProcessing = saved.voiceProcessing;
   if (typeof saved.lossProtection === 'boolean') s.lossProtection = saved.lossProtection;
   if (typeof saved.showDiagnostics === 'boolean') s.showDiagnostics = saved.showDiagnostics;
