@@ -113,7 +113,7 @@ export class ListenerSession {
   private applyBufferMode(): void {
     const mode = settingsStore.get().bufferMode;
     this.conn.setPlayoutDelay(mode === 'stable' ? STABLE_BUFFER_SECONDS : 0);
-    this.lossless.setTargetMs(LOSSLESS_TARGET_MS[mode]);
+    this.lossless.setTargetMs(LOSSLESS_TARGET_MS[mode], mode === 'auto');
   }
 
   /** The host announces its transport in the sync state; play the matching stream. */

@@ -57,6 +57,10 @@ export function LosslessStats(
       banner = `${r.unexpectedGaps} unannounced gap(s) detected — continuity was broken.`;
     rows.push(
       ['Buffer', `${r.bufferMs} ms`],
+      [
+        'Buffer target',
+        `${r.targetMs} ms (jitter ${r.jitterMs} ms, stall memory ${r.stallMemoryMs} ms)`,
+      ],
       ['Outages', String(r.outages)],
       ['Last recovery', r.lastRecoveryMs === null ? '—' : `${r.lastRecoveryMs} ms`],
       ['Announced gaps', String(r.announcedGaps)],

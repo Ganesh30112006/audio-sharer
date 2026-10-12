@@ -17,6 +17,9 @@ interface Scenario {
   impair?: { latency: number; packetLoss: number; packetReordering?: boolean };
 }
 
+/** Measurement length; LATENCY_SECONDS=120 shows the adaptive buffer over several stalls. */
+const MEASURE_S = Number(process.env.LATENCY_SECONDS ?? 25);
+
 const scenarios: Scenario[] = [
   { name: 'clean network, auto buffer', bufferMode: 'auto' },
   { name: 'lossless, clean network, auto buffer', transport: 'lossless', bufferMode: 'auto' },
@@ -42,6 +45,7 @@ const scenarios: Scenario[] = [
 
 for (const { name, bufferMode, impair, transport = 'opus' } of scenarios) {
   test(`pipeline latency: ${name}`, async ({ browser }) => {
+    test.setTimeout((MEASURE_S + 60) * 1000);
     const hostCtx = await browser.newContext();
     const listenerCtx = await browser.newContext();
     for (const c of [hostCtx, listenerCtx]) {
@@ -75,7 +79,11 @@ for (const { name, bufferMode, impair, transport = 'opus' } of scenarios) {
     const code = host.url().split('/').pop()!;
     await host
       .getByTestId('file-input')
-      .setInputFiles({ name: 'clicks.wav', mimeType: 'audio/wav', buffer: burstWav(40) });
+      .setInputFiles({
+        name: 'clicks.wav',
+        mimeType: 'audio/wav',
+        buffer: burstWav(MEASURE_S + 15),
+      });
     await host.getByRole('button', { name: 'Go live' }).click();
 
     if (impair) {
@@ -100,8 +108,8 @@ for (const { name, bufferMode, impair, transport = 'opus' } of scenarios) {
     });
 
     await host.getByRole('button', { name: 'Play', exact: true }).click();
-    // Let the jitter buffer settle, then measure ~20 bursts.
-    await host.waitForTimeout(25_000);
+    // Let the jitter buffer settle, then measure one burst per second.
+    await host.waitForTimeout(MEASURE_S * 1000);
 
     const lat = pairLatencies(await readOnsets(host), await readOnsets(listener)).slice(3);
     // Missing metrics (e.g. lossless stats in Opus mode) read as '' instead of waiting.
@@ -117,8 +125,10 @@ for (const { name, bufferMode, impair, transport = 'opus' } of scenarios) {
       minMs: Math.round(Math.min(...lat)),
       maxMs: Math.round(Math.max(...lat)),
       packetLoss: await metric('Packet loss'),
-      losslessUnderruns: await metric('lossless Underruns'),
+      losslessOutages: await metric('lossless Outages'),
       losslessBuffer: await metric('lossless Buffer'),
+      losslessTarget: await metric('lossless Buffer target'),
+      losslessTransit: await metric('lossless Transit'),
       concealmentEvents: await metric('Concealment events'),
       jitterBuffer: await metric('Jitter buffer'),
       listenerBitrate: await metric('Bitrate'),

@@ -8,7 +8,7 @@ import type { Interruption } from './flowControl';
 import { SendPipeline } from './pipeline';
 
 /** Target block duration. */
-const BLOCK_MS = 20;
+const BLOCK_MS = 10;
 /**
  * Cap on a block's raw size so one encoded block always fits a single reliable
  * data-channel message (LiveKit recommends < 15 KiB). Hi-res streams therefore

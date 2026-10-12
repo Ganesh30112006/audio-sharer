@@ -96,8 +96,8 @@ describe('lossless codec', () => {
 describe('block sizing', () => {
   it('keeps every block under one data-channel message, even for hi-res', async () => {
     const { blockFramesFor } = await import('../../src/audio/lossless/LosslessSender');
-    expect(blockFramesFor(44_100, 16)).toBe(882); // 20 ms
-    expect(blockFramesFor(48_000, 24)).toBe(960); // 20 ms
+    expect(blockFramesFor(44_100, 16)).toBe(441); // 10 ms
+    expect(blockFramesFor(48_000, 24)).toBe(480); // 10 ms
     for (const [rate, bits] of [
       [96_000, 24],
       [192_000, 24],

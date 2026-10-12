@@ -13,6 +13,12 @@ export interface LosslessReceiverStats {
   channels: number;
   kbps: number;
   bufferMs: number;
+  /** Current playback-buffer target (adaptive in auto mode) and the jitter it covers. */
+  targetMs: number;
+  jitterMs: number;
+  /** Long-term memory of recent stalls the target still covers. */
+  stallMemoryMs: number;
+  bufferAdaptations: number;
   /** Audible outages: playback stopped for lack of data (incl. resets at gaps). */
   outages: number;
   outageMs: number;
@@ -53,7 +59,12 @@ export interface LosslessReceiverStats {
   offMainThread: boolean;
 }
 
-export const LOSSLESS_TARGET_MS = { auto: 120, stable: 300 } as const;
+/**
+ * Playback buffer per mode: `auto` starts small and adapts to measured jitter
+ * (never below `autoMin`); `stable` is a fixed, generous buffer.
+ */
+export const LOSSLESS_TARGET_MS = { auto: 40, stable: 300 } as const;
+export const LOSSLESS_MIN_TARGET_MS = 20;
 const STATS_INTERVAL_MS = 500;
 
 interface Format {
@@ -69,6 +80,10 @@ const idle = (): LosslessReceiverStats => ({
   channels: 0,
   kbps: 0,
   bufferMs: 0,
+  targetMs: 0,
+  jitterMs: 0,
+  stallMemoryMs: 0,
+  bufferAdaptations: 0,
   outages: 0,
   outageMs: 0,
   lastRecoveryMs: null,
@@ -111,6 +126,7 @@ export class LosslessReceiver {
   private building: Promise<void> | null = null;
   private pending: Uint8Array[] = [];
   private targetMs: number = LOSSLESS_TARGET_MS.auto;
+  private adaptive = true;
   private disposed = false;
   private readonly codec = new CodecClient((reply) => this.onReply(reply));
   private readonly pipeline: ReceivePipeline;
@@ -148,9 +164,11 @@ export class LosslessReceiver {
     return this.pipeline.stats();
   }
 
-  setTargetMs(ms: number): void {
+  /** Sets the playback buffer; `adaptive` lets it follow measured jitter from there. */
+  setTargetMs(ms: number, adaptive = false): void {
     this.targetMs = ms;
-    this.node?.port.postMessage({ type: 'target', targetMs: ms });
+    this.adaptive = adaptive;
+    this.node?.port.postMessage({ type: 'target', targetMs: ms, adaptive });
   }
 
   push(payload: Uint8Array): void {
@@ -209,7 +227,7 @@ export class LosslessReceiver {
   }
 
   private onWorklet(
-    msg: { type: string; playing?: boolean } & Partial<LosslessReceiverStats>,
+    msg: { type: string; playing?: boolean; adaptations?: number } & Partial<LosslessReceiverStats>,
   ): void {
     if (msg.type === 'state') {
       const now = performance.now();
@@ -229,6 +247,10 @@ export class LosslessReceiver {
     } else if (msg.type === 'stats') {
       this.stats.set({
         bufferMs: Math.round(msg.bufferMs ?? 0),
+        targetMs: Math.round(msg.targetMs ?? 0),
+        jitterMs: +(msg.jitterMs ?? 0).toFixed(1),
+        stallMemoryMs: Math.round(msg.stallMemoryMs ?? 0),
+        bufferAdaptations: msg.adaptations ?? 0,
         clockCorrections: msg.clockCorrections ?? 0,
         resyncs: msg.resyncs ?? 0,
         playedFrames: msg.playedFrames ?? 0,
@@ -284,8 +306,9 @@ export class LosslessReceiver {
       processorOptions: {
         channels: first.channels,
         targetMs: this.targetMs,
-        windowMs: 40,
         maxMs: 1500,
+        adaptive: this.adaptive,
+        minMs: LOSSLESS_MIN_TARGET_MS,
       },
     });
     const dest = ctx.createMediaStreamDestination();
