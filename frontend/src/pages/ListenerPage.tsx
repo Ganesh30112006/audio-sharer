@@ -176,6 +176,7 @@ function ListenerRoom({ session }: { session: ListenerSession }) {
             <DiagnosticsPanel
               conn={session.conn}
               direction="inbound"
+              connectionOnly={losslessLabel !== null}
               clockUncertaintyMs={session.clock.current?.uncertainty}
             />
           )}

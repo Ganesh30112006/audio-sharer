@@ -11,6 +11,8 @@ interface DiagnosticsPanelProps {
   /** Additional locally known output latency (seconds), if any. */
   outputLatency?: number;
   clockUncertaintyMs?: number;
+  /** Lossless mode has no Opus track: show connection-level rows only. */
+  connectionOnly?: boolean;
 }
 
 const selReconnects = (s: RoomConnectionState) => s.reconnects;
@@ -22,8 +24,9 @@ export function DiagnosticsPanel({
   direction,
   outputLatency,
   clockUncertaintyMs,
+  connectionOnly = false,
 }: DiagnosticsPanelProps) {
-  const stats = useConnectionStats(conn, direction, true);
+  const stats = useConnectionStats(conn, direction, !connectionOnly);
   const reconnects = useStore(conn.store, selReconnects);
   const recovery = useStore(conn.store, selRecovery);
   const quality = useStore(conn.store, selQuality);
@@ -35,16 +38,19 @@ export function DiagnosticsPanel({
       ? stats.rttMs / 2 + (stats.jitterBufferMs ?? 0) + (outputLatency ?? 0) * 1000
       : undefined;
 
-  const rows: Array<[string, string, string?]> = [
-    ['Network quality', quality],
+  const media: Array<[string, string, string?]> = [
     ['Codec', stats?.codec ?? '—'],
     ['Bitrate', stats?.bitrateKbps !== undefined ? `${stats.bitrateKbps.toFixed(0)} kbps` : '—'],
     ['Packet loss', formatPct(stats?.packetLossPct)],
     ['Jitter', formatMs(stats?.jitterMs, 1)],
     ['Round trip', formatMs(stats?.rttMs)],
   ];
-  if (direction === 'inbound') {
+  const rows: Array<[string, string, string?]> = [['Network quality', quality]];
+  if (connectionOnly) {
+    // Lossless stream metrics live in the Lossless stream panel.
+  } else if (direction === 'inbound') {
     rows.push(
+      ...media,
       ['Audio level', stats?.audioLevel !== undefined ? stats.audioLevel.toFixed(3) : '—'],
       ['Jitter buffer', formatMs(stats?.jitterBufferMs)],
       [
@@ -62,8 +68,10 @@ export function DiagnosticsPanel({
         'Excludes host upload and Bluetooth/OS output buffering',
       ],
     );
-  } else if (outputLatency !== undefined) {
-    rows.push(['Monitor output latency', formatMs(outputLatency * 1000)]);
+  } else {
+    rows.push(...media);
+    if (outputLatency !== undefined)
+      rows.push(['Monitor output latency', formatMs(outputLatency * 1000)]);
   }
   rows.push(['Reconnects', String(reconnects)], ['Last recovery', formatMs(recovery ?? undefined)]);
   if (clockUncertaintyMs !== undefined)

@@ -6,6 +6,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LIVEKIT_BIN="${LIVEKIT_BIN:-livekit-server}"
 PY="${PYTHON:-python3}"
+# Resolve a relative interpreter path before changing directories.
+case "$PY" in */*) PY="$(cd "$(dirname "$PY")" && pwd)/$(basename "$PY")" ;; esac
 
 pids=()
 cleanup() { kill "${pids[@]}" 2>/dev/null || true; }

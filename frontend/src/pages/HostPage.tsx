@@ -225,6 +225,7 @@ function HostDashboard({ session }: { session: HostSession }) {
             <DiagnosticsPanel
               conn={session.conn}
               direction="outbound"
+              connectionOnly={host.transport === 'lossless'}
               outputLatency={session.player.outputLatency()}
               clockUncertaintyMs={session.clock.current?.uncertainty}
             />

@@ -96,7 +96,7 @@ test('host cost stays flat as listeners join (SFU fan-out)', async ({ browser })
   const listeners: Array<{ ctx: BrowserContext; page: Page }> = [];
   const rows: Array<Record<string, number | string>> = [];
 
-  for (const target of [1, 4, 8]) {
+  for (const target of [1, 2, 4, 8]) {
     while (listeners.length < target)
       listeners.push(await addListener(browser, host.code, listeners.length));
     await expect(host.page.getByLabel(`${target} listeners`)).toBeVisible({ timeout: 15_000 });
