@@ -1,13 +1,16 @@
 # Local development / CI LiveKit config. Do NOT use these keys in production.
+#
+# Listens on all interfaces and advertises this machine's network IP (LiveKit
+# auto-detects it; override with --node-ip). Advertising only 127.0.0.1 does
+# not work: Chromium won't complete ICE to a loopback-only candidate from a
+# page opened at http://localhost. Note this also makes the dev SFU reachable
+# from your LAN, which is what lets phones on the same Wi-Fi join.
 port: 7880
-bind_addresses:
-  - 127.0.0.1
 rtc:
   tcp_port: 7881
   port_range_start: 50000
   port_range_end: 50100
   use_external_ip: false
-  node_ip: 127.0.0.1
 keys:
   devkey: devsecret-not-for-production-0123456789
 room:

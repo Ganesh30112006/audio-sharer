@@ -28,8 +28,8 @@ cd frontend && npm ci && cd ..
 # 2. run everything (LiveKit :7880, API :8000, web :5173)
 PYTHON=backend/.venv/bin/python ./scripts/dev.sh
 
-# Same, reachable from phones/laptops on your Wi-Fi (advertises your LAN IP):
-LAN=1 PYTHON=backend/.venv/bin/python ./scripts/dev.sh
+# Phones/laptops on the same Wi-Fi can join at http://<this-machine's-IP>:5173
+# (the SFU advertises your network IP; override with NODE_IP=… if needed)
 ```
 
 Open http://localhost:5173, click **Create room**, add an audio file, and click

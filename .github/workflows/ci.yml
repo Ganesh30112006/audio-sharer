@@ -58,7 +58,7 @@ jobs:
         run: |
           curl -sSL "https://github.com/livekit/livekit/releases/download/v${LIVEKIT_VERSION}/livekit_${LIVEKIT_VERSION}_linux_amd64.tar.gz" | tar xz -C /tmp
           # Advertise the runner's real IP: newer Chromium fails ICE to a loopback-only candidate.
-          /tmp/livekit-server --config deploy/livekit.ci.yaml --node-ip "$(hostname -I | awk '{print $1}')" > /tmp/livekit.log 2>&1 &
+          /tmp/livekit-server --config deploy/livekit.dev.yaml --node-ip "$(hostname -I | awk '{print $1}')" > /tmp/livekit.log 2>&1 &
       - run: pip install -r backend/requirements.txt
       - working-directory: frontend
         run: npm ci && npx playwright install --with-deps chromium
